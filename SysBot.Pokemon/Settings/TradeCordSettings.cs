@@ -7,9 +7,6 @@ namespace SysBot.Pokemon
         private const string FeatureToggle = nameof(FeatureToggle);
         public override string ToString() => "TradeCord Settings";
 
-        [Category(FeatureToggle), Description("Enter Channel ID(s) where TradeCord should be active, or leave blank.")]
-        public string TradeCordChannels { get; set; } = string.Empty;
-
         [Category(FeatureToggle), Description("If enabled, every time the program is started up, inactive users will be deleted (no commands used for at least a month).")]
         public bool ClearInactive { get; set; } = false;
 
@@ -85,5 +82,7 @@ namespace SysBot.Pokemon
         ClickbaitArticle = 21,
         Babies = 22,
         Halloween = 23,
+        CottonCandy = 24,
+        PokePets = 25,
     }
 }

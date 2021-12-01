@@ -11,6 +11,7 @@ namespace SysBot.Pokemon
                 or PokeRoutineType.LinkTrade
                 or PokeRoutineType.Clone
                 or PokeRoutineType.Dump
+                or PokeRoutineType.FixOT
                 => new PokeTradeBotBS(Hub, cfg),
 
             PokeRoutineType.RemoteControl => new RemoteControlBot(cfg),

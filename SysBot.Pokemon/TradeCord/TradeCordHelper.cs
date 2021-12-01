@@ -9,10 +9,10 @@ using System.Data.SQLite;
 
 namespace SysBot.Pokemon
 {
-    public class TradeCordHelper : TradeCordDatabase
+    public class TradeCordHelper<T> : TradeCordDatabase<T> where T : PKM, new()
     {
         private readonly TradeCordSettings Settings;
-        private readonly TradeCordHelperUtil Util = new();
+        private readonly TradeCordHelperUtil<T> Util = new();
 
         public static bool TCInitialized;
         public static bool VacuumLock;
@@ -34,12 +34,12 @@ namespace SysBot.Pokemon
             public bool FailedCatch { get; set; }
 
             public int PokeID { get; set; }
-            public PK8 Poke { get; set; } = new();
+            public T Poke { get; set; } = new();
 
             public int EggPokeID { get; set; }
-            public PK8 EggPoke { get; set; } = new();
+            public T EggPoke { get; set; } = new();
 
-            public PK8? Shedinja { get; set; }
+            public T? Shedinja { get; set; }
 
             public TCUser User { get; set; } = new();
             public TCUser Giftee { get; set; } = new();
@@ -61,31 +61,31 @@ namespace SysBot.Pokemon
 
         public Results ProcessTradeCord(TC_CommandContext ctx, string[] input)
         {
-            if (!TCInitialized)
-            {
-                var current = Process.GetCurrentProcess();
-                var all = Process.GetProcessesByName(current.ProcessName);
-                bool sameExe = all.Count(x => x.MainModule.FileName == current.MainModule.FileName) > 1;
-                if (!sameExe)
-                    TCInitialized = true;
-                else
-                {
-                    Base.LogUtil.LogText("Another TradeCord instance is already running! Killing the process.");
-                    Environment.Exit(0);
-                }
-
-                if (!CreateDB())
-                    throw new SQLiteException();
-
-                if (Settings.ClearInactive)
-                    ClearInactiveUsers();
-            }
-
             while (VacuumLock)
                 Thread.Sleep(100);
 
             lock (_sync)
             {
+                if (!TCInitialized)
+                {
+                    var current = Process.GetCurrentProcess();
+                    var all = Process.GetProcessesByName(current.ProcessName);
+                    bool sameExe = all.Count(x => x.MainModule.FileName == current.MainModule.FileName) > 1;
+                    if (!sameExe)
+                        TCInitialized = true;
+                    else
+                    {
+                        Base.LogUtil.LogText("Another TradeCord instance is already running! Killing the process.");
+                        Environment.Exit(0);
+                    }
+
+                    if (!CreateDB())
+                        throw new SQLiteException();
+
+                    if (Settings.ClearInactive)
+                        ClearInactiveUsers();
+                }
+
                 try
                 {
                     TCUser user = new();
@@ -121,7 +121,7 @@ namespace SysBot.Pokemon
                         TCCommandContext.Info => InfoHandler(user, input[0]),
                         TCCommandContext.MassRelease => MassReleaseHandler(user, input[0]),
                         TCCommandContext.Release => ReleaseHandler(user, input[0]),
-                        TCCommandContext.DaycareInfo => DaycareInfoHandler(user.Daycare, user.UserInfo.UserID),
+                        TCCommandContext.DaycareInfo => DaycareInfoHandler(user),
                         TCCommandContext.Daycare => DaycareHandler(user, input[0], input[1]),
                         TCCommandContext.Gift => GiftHandler(user, giftee, input[0]),
                         TCCommandContext.TrainerInfoSet => TrainerInfoSetHandler(user, input),
@@ -207,7 +207,7 @@ namespace SysBot.Pokemon
             }
         }
 
-        private Results CatchHandler(TCUser user)
+        private Results CatchHandler(TCUser user, int format = 8)
         {
             Results result = new();
             string eggMsg = string.Empty;
@@ -233,7 +233,15 @@ namespace SysBot.Pokemon
 
                 EvoCriteria evo1 = new(0, 0), evo2 = new(0, 0);
                 int ball1 = 0, ball2 = 0;
-                bool egg = Util.Rng.EggRNG >= 100 - Settings.EggRate && Util.CanGenerateEgg(user.Daycare, user.UserInfo.UserID, out evo1, out evo2, out ball1, out ball2);
+                bool update = false;
+                bool egg = Util.Rng.EggRNG >= 100 - Settings.EggRate && Util.CanGenerateEgg(ref user, out evo1, out evo2, out ball1, out ball2, out update);
+                if (update)
+                {
+                    var names = new string[] { "@id1", "@species1", "@form1", "@ball1", "@shiny1", "@id2", "@species2", "@form2", "@ball2", "@shiny2", "@user_id" };
+                    var obj = new object[] { user.Daycare.ID1, user.Daycare.Species1, user.Daycare.Form1, user.Daycare.Ball1, user.Daycare.Shiny1, user.Daycare.ID2, user.Daycare.Species2, user.Daycare.Form2, user.Daycare.Ball2, user.Daycare.Shiny2, user.UserInfo.UserID };
+                    result.SQLCommands.Add(DBCommandConstructor("daycare", "id1 = ?, species1 = ?, form1 = ?, ball1 = ?, shiny1 = ?, id2 = ?, species2 = ?, form2 = ?, ball2 = ?, shiny2 = ?", "where user_id = ?", names, obj, SQLTableContext.Update));
+                }
+
                 if (egg)
                 {
                     result.EggPoke = EggProcess(user.Daycare, evo1, evo2, ball1, ball2, string.Join("\n", trainerInfo), out eggMsg);
@@ -270,7 +278,7 @@ namespace SysBot.Pokemon
                         Enum.TryParse(user.TrainerInfo.OTGender, out Gender gender);
                         Enum.TryParse(user.TrainerInfo.Language, out LanguageID language);
                         var info = new SimpleTrainerInfo { Gender = (int)gender, Language = (int)language, OT = user.TrainerInfo.OTName, TID = user.TrainerInfo.TID, SID = user.TrainerInfo.SID };
-                        result.Poke = TradeExtensions.CherishHandler(mgRng, info);
+                        result.Poke = TradeExtensions.CherishHandler<T>(mgRng, info, format);
                     }
 
                     if (result.Poke.Species == 0)
@@ -323,7 +331,6 @@ namespace SysBot.Pokemon
                         result.SQLCommands.Add(DBCommandConstructor("items", "count = ?", "where user_id = ? and id = ?", names, obj, SQLTableContext.Update));
                     }
                 }
-
                 return true;
             }
 
@@ -348,7 +355,7 @@ namespace SysBot.Pokemon
 
                 if (result.Item != string.Empty)
                 {
-                    bool article = TradeCordHelperUtil.ArticleChoice(result.Item[0]);
+                    bool article = TradeCordHelperUtil<T>.ArticleChoice(result.Item[0]);
                     result.Message += result.FailedCatch ? $"&^&\nAs it fled it dropped {(article ? "an" : "a")} {result.Item}! Added to the items pouch." : $"&^&\nOh? It was holding {(article ? "an" : "a")} {result.Item}! Added to the items pouch.";
                 }
             }
@@ -383,7 +390,7 @@ namespace SysBot.Pokemon
                     return false;
                 }
 
-                var pk = GetLookupAsClassObject<PK8>(user.UserInfo.UserID, "binary_catches", $"and id = {match.ID}");
+                var pk = GetLookupAsClassObject<T>(user.UserInfo.UserID, "binary_catches", $"and id = {match.ID}");
                 if (pk.Species == 0)
                 {
                     result.Message = "Oops, something happened when converting your Pokémon!";
@@ -446,15 +453,20 @@ namespace SysBot.Pokemon
                     return false;
                 }
 
-                string def = filters.Count == 0 ? $"and {(input == "All" ? "species != ''" : input == "Legendaries" ? "is_legendary = 1" : input == "Events" ? "is_event = 1" : input == "Eggs" ? "is_egg = 1" : input == "Shinies" ? "is_shiny = 1" : isBall ? $"ball = '{enumBall}'" : (speciesAndForm ? $"species||form = '{input}'" : isSpecies ? $"species = '{input}'" : isForm ? $"form = '-{input}'" : $"nickname = '{nickname}'"))} and was_traded = 0" : "";
-                string one = filters.Count == 1 ? $"and {(input == "All" ? "species != ''" : input == "Legendaries" ? "is_legendary = 1" : input == "Events" ? "is_event = 1" : input == "Eggs" ? "is_egg = 1" : input == "Shinies" ? "is_shiny = 1" : (speciesAndForm ? $"species||form = '{input}'" : isSpecies ? $"species = '{input}'" : isForm ? $"form = '-{input}'" : $"nickname = '{nickname}'"))} and {(isShiny ? "is_shiny = 1" : $"ball = '{filters[0]}'")} and was_traded = 0" : "";
-                string two = filters.Count == 2 ? $"and {(input == "All" ? "species != ''" : input == "Legendaries" ? "is_legendary = 1" : input == "Events" ? "is_event = 1" : input == "Eggs" ? "is_egg = 1" : (speciesAndForm ? $"species||form = '{input}'" : isSpecies ? $"species = '{input}'" : isForm ? $"form = '-{input}'" : $"nickname = '{nickname}'"))} and ball = '{filterBall}' and is_shiny = 1 and was_traded = 0" : "";
-
-                Dictionary<int, TCCatch> matches = filters.Count switch
+                List<TCCatch> matches = new();
+                var dict = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, "catches");
+                if (dict.Count == 0)
                 {
-                    1 => GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, "catches", one),
-                    2 => GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, "catches", two),
-                    _ => GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, "catches", def),
+                    result.Message = "You do not have any catches yet.";
+                    return false;
+                }
+
+                var catches = dict.Values.ToList();
+                matches = filters.Count switch
+                {
+                    1 => catches.FindAll(x => !x.Traded && (isShiny ? x.Shiny : x.Ball == filters[0]) && (input == "All" ? x.Species != "" : input == "Legendaries" ? x.Legendary : input == "Events" ? x.Event : input == "Eggs" ? x.Egg : input == "Shinies" ? x.Shiny : speciesAndForm ? x.Species + x.Form == input : isSpecies ? x.Species == input : isForm ? x.Form == $"-{input}" : x.Nickname == nickname)),
+                    2 => catches.FindAll(x => !x.Traded && x.Shiny && x.Ball == filterBall && (input == "All" ? x.Species != "" : input == "Legendaries" ? x.Legendary : input == "Events" ? x.Event : input == "Eggs" ? x.Egg : speciesAndForm ? x.Species + x.Form == input : isSpecies ? x.Species == input : isForm ? x.Form == $"-{input}" : x.Nickname == nickname)),
+                    _ => catches.FindAll(x => !x.Traded && (input == "All" ? x.Species != "" : input == "Legendaries" ? x.Legendary : input == "Events" ? x.Event : input == "Eggs" ? x.Egg : input == "Shinies" ? x.Shiny : isBall ? x.Ball == $"{enumBall}" : speciesAndForm ? x.Species + x.Form == input : isSpecies ? x.Species == input : isForm ? x.Form == $"-{input}" : x.Nickname == nickname)),
                 };
 
                 if (matches.Count == 0)
@@ -467,14 +479,14 @@ namespace SysBot.Pokemon
                 if (input == "Shinies")
                 {
                     foreach (var result in matches)
-                        countSh.Add($"(__{result.Value.ID}__) {result.Value.Species}{result.Value.Form}");
+                        countSh.Add($"(__{result.ID}__) {result.Species}{result.Form}");
                 }
                 else
                 {
                     foreach (var result in matches)
                     {
-                        var speciesString = result.Value.Shiny ? $"(__{result.Value.ID}__) {result.Value.Species}{result.Value.Form}" : $"({result.Value.ID}) {result.Value.Species}{result.Value.Form}";
-                        if (result.Value.Shiny)
+                        var speciesString = result.Shiny ? $"(__{result.ID}__) {result.Species}{result.Form}" : $"({result.ID}) {result.Species}{result.Form}";
+                        if (result.Shiny)
                             countSh.Add(speciesString);
                         count.Add(speciesString);
                     }
@@ -510,7 +522,7 @@ namespace SysBot.Pokemon
                     return false;
                 }
 
-                var pk = GetLookupAsClassObject<PK8>(user.UserInfo.UserID, "binary_catches", $"and id = {match.ID}");
+                var pk = GetLookupAsClassObject<T>(user.UserInfo.UserID, "binary_catches", $"and id = {match.ID}");
                 if (pk.Species == 0)
                 {
                     result.Message = "Oops, something happened when converting your Pokémon!";
@@ -531,9 +543,18 @@ namespace SysBot.Pokemon
             Results result = new();
             bool FuncMassRelease()
             {
-                Dictionary<int, TCCatch> matches;
                 input = Util.ListNameSanitize(input);
-                Enum.TryParse(input, out Ball ball);
+                if (Enum.TryParse(input, out Ball ball) && ((int)ball < 0 || (int)ball > 26))
+                {
+                    result.Message = "Invalid ball input.";
+                    return false;
+                }
+                else if (int.TryParse(input, out _))
+                {
+                    result.Message = "Invalid input.";
+                    return false;
+                }
+
                 bool speciesAndForm = input.Contains("-");
                 string tableJoin = "catches c inner join daycare d on c.user_id = d.user_id inner join buddy b on c.user_id = b.user_id";
                 string ballSearch = $"and c.is_favorite = 0 and c.was_traded = 0 and c.is_shiny = 0 and c.species != 'Ditto' and c.id != d.id1 and c.id != d.id2 and c.id != b.id and c.ball = '{ball}' and c.is_legendary = 0";
@@ -542,32 +563,34 @@ namespace SysBot.Pokemon
                 string eventSearch = "and c.is_favorite = 0 and c.was_traded = 0 and c.is_shiny = 0 and c.species != 'Ditto' and c.id != d.id1 and c.id != d.id2 and c.id != b.id and c.is_event = 1 and c.is_legendary = 0";
                 string defaultSearch = "and c.is_favorite = 0 and c.was_traded = 0 and c.is_shiny = 0 and c.species != 'Ditto' and c.id != d.id1 and c.id != d.id2 and c.id != b.id and c.is_event = 0 and c.is_legendary = 0";
 
+                Dictionary<int, TCCatch> catches;
                 if (ball != Ball.None)
-                    matches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, ballSearch, true);
+                    catches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, ballSearch, true);
                 else if (input == "Shinies")
-                    matches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, shinySearch, true);
+                    catches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, shinySearch, true);
                 else if (input == "Legendaries")
-                    matches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, legendarySearch, true);
+                    catches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, legendarySearch, true);
                 else if (input == "Events")
-                    matches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, eventSearch, true);
+                    catches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, eventSearch, true);
                 else if (input != "")
                 {
                     string speciesSearch = $"and {(speciesAndForm ? $"c.species||c.form = '{input}'" : $"c.species = '{input}' and c.form = ''")} and c.is_favorite = 0 and c.was_traded = 0 and c.is_shiny = 0 and c.id != d.id1 and c.id != d.id2 and c.id != b.id and c.ball != 'Cherish'";
-                    matches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, speciesSearch, true);
+                    catches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, speciesSearch, true);
                 }
-                else matches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, defaultSearch, true);
+                else catches = GetLookupAsClassObject<Dictionary<int, TCCatch>>(user.UserInfo.UserID, tableJoin, defaultSearch, true);
 
-                if (matches.Count() == 0)
+                if (catches.Count == 0)
                 {
                     result.Message = input == "" ? "Cannot find any more non-shiny, non-Ditto, non-favorite, non-event, non-buddy, non-legendary Pokémon to release." : "Cannot find anything that could be released with the specified criteria.";
                     return false;
                 }
 
+                var matches = catches.Values.ToList();
                 List<int> arr = new();
                 foreach (var val in matches)
                 {
-                    user.Catches.Remove(val.Key);
-                    arr.Add(val.Value.ID);
+                    user.Catches.Remove(val.ID);
+                    arr.Add(val.ID);
                 }
 
                 var names = new string[arr.Count + 1];
@@ -637,23 +660,32 @@ namespace SysBot.Pokemon
             return result;
         }
 
-        private Results DaycareInfoHandler(TCDaycare dc, ulong userID)
+        private Results DaycareInfoHandler(TCUser user)
         {
             Results result = new();
+            bool canBreed = Util.CanGenerateEgg(ref user, out _, out _, out _, out _, out bool update);
+            if (update)
+            {
+                var names = new string[] { "@id1", "@species1", "@form1", "@ball1", "@shiny1", "@id2", "@species2", "@form2", "@ball2", "@shiny2", "@user_id" };
+                var obj = new object[] { user.Daycare.ID1, user.Daycare.Species1, user.Daycare.Form1, user.Daycare.Ball1, user.Daycare.Shiny1, user.Daycare.ID2, user.Daycare.Species2, user.Daycare.Form2, user.Daycare.Ball2, user.Daycare.Shiny2, user.UserInfo.UserID };
+                result.SQLCommands.Add(DBCommandConstructor("daycare", "id1 = ?, species1 = ?, form1 = ?, ball1 = ?, shiny1 = ?, id2 = ?, species2 = ?, form2 = ?, ball2 = ?, shiny2 = ?", "where user_id = ?", names, obj, SQLTableContext.Update));
+            }
+
+            var dc = user.Daycare;
             if (dc.ID1 == 0 && dc.ID2 == 0)
                 result.Message = "You do not have anything in daycare.";
             else
             {
                 var dcSpecies1 = dc.ID1 == 0 ? "" : $"(ID: {dc.ID1}) {(dc.Shiny1 ? "★" : "")}{SpeciesName.GetSpeciesNameGeneration(dc.Species1, 2, 8)}{(dc.Species1 == 29 || dc.Species1 == 32 ? "" : dc.Form1)} ({(Ball)dc.Ball1})";
                 var dcSpecies2 = dc.ID2 == 0 ? "" : $"(ID: {dc.ID2}) {(dc.Shiny2 ? "★" : "")}{SpeciesName.GetSpeciesNameGeneration(dc.Species2, 2, 8)}{(dc.Species2 == 29 || dc.Species2 == 32 ? "" : dc.Form2)} ({(Ball)dc.Ball2})";
-
                 if (dc.ID1 != 0 && dc.ID2 != 0)
-                    result.Message = $"{dcSpecies1}\n{dcSpecies2}{(Util.CanGenerateEgg(dc, userID, out _, out _, out _, out _) ? "\n\nThey seem to really like each other." : "\n\nThey don't really seem to be fond of each other. Make sure they're of the same evolution tree, can be eggs, and have been hatched!")}";
+                    result.Message = $"{dcSpecies1}\n{dcSpecies2}{(canBreed ? "\n\nThey seem to really like each other." : "\n\nThey don't really seem to be fond of each other. Make sure they're of the same evolution tree, can be eggs, and have been hatched!")}";
                 else if (dc.ID1 == 0 || dc.ID2 == 0)
                     result.Message = $"{(dc.ID1 == 0 ? dcSpecies2 : dcSpecies1)}\n\nIt seems lonely.";
             }
 
             result.Success = true;
+            result.User = user;
             return result;
         }
 
@@ -754,7 +786,7 @@ namespace SysBot.Pokemon
                     return false;
                 }
 
-                result.EmbedName = $"{(deposit ? " Deposit" : " Withdraw")}";
+                result.EmbedName += $"{(deposit ? " Deposit" : " Withdraw")}";
                 result.Message = deposit && found ? $"Deposited your {(match.Shiny ? "★" : "")}{match.Species}{match.Form}({match.Ball}) to daycare!" : $"You withdrew your {speciesString} from the daycare.";
                 return true;
             }
@@ -1094,9 +1126,14 @@ namespace SysBot.Pokemon
                     result.Message = "SpeciesBoost perk isn't active.";
                     return false;
                 }
+                else if (int.TryParse(input, out _))
+                {
+                    result.Message = "Please enter a valid species name.";
+                    return false;
+                }
 
                 input = Util.ListNameSanitize(input).Replace("'", "").Replace("-", "").Replace(" ", "").Replace(".", "");
-                if (!Enum.TryParse(input, out Gen8Dex species))
+                if (!Enum.TryParse(input, out Gen8Dex species) || (int)species >= 899 || (int)species <= 0)
                 {
                     result.Message = "Entered species was not recognized.";
                     return false;
@@ -1151,11 +1188,21 @@ namespace SysBot.Pokemon
                 var found = user.Catches.TryGetValue(input != string.Empty ? id : user.Buddy.ID, out TCCatch match);
                 if (!found)
                 {
+                    if (input == string.Empty)
+                    {
+                        var names = new string[] { "@id", "@name", "@ability", "@user_id" };
+                        var obj = new object[] { 0, string.Empty, string.Empty, user.UserInfo.UserID };
+                        result.SQLCommands.Add(DBCommandConstructor("buddy", "id = ?, name = ?, ability = ?", "where user_id = ?", names, obj, SQLTableContext.Update));
+                        result.Message = "Could not find this Pokémon. Clearing buddy data.";
+                        user.Buddy = new();
+                        return false;
+                    }
+
                     result.Message = "Could not find this Pokémon.";
                     return false;
                 }
 
-                var pk = GetLookupAsClassObject<PK8>(user.UserInfo.UserID, "binary_catches", $"and id = {match.ID}");
+                var pk = GetLookupAsClassObject<T>(user.UserInfo.UserID, "binary_catches", $"and id = {match.ID}");
                 if (pk.Species == 0)
                 {
                     result.Message = "Oops, something happened when converting your Pokémon!";
@@ -1277,12 +1324,17 @@ namespace SysBot.Pokemon
                     result.Message = "You don't have an active buddy.";
                     return false;
                 }
+                else if (input != "" && int.TryParse(input, out _))
+                {
+                    result.Message = "Input cannot be numerical.";
+                    return false;
+                }
 
-                bool alc = Enum.TryParse(input, true, out AlcremieForms alcremie);
+                bool alc = Enum.TryParse(input, true, out AlcremieForms alcremie) && (int)alcremie <= 8;
                 if (!alc)
                     alcremie = AlcremieForms.None;
 
-                bool reg = Enum.TryParse(input, true, out RegionalFormArgument regional);
+                bool reg = Enum.TryParse(input, true, out RegionalFormArgument regional) && (int)regional <= 2;
                 if (!reg)
                     regional = RegionalFormArgument.None;
 
@@ -1304,7 +1356,7 @@ namespace SysBot.Pokemon
                     return false;
                 }
 
-                var pk = GetLookupAsClassObject<PK8>(user.UserInfo.UserID, "binary_catches", $"and id = {match.ID}");
+                var pk = GetLookupAsClassObject<T>(user.UserInfo.UserID, "binary_catches", $"and id = {match.ID}");
                 if (pk.Species == 0)
                 {
                     result.Message = "Oops, something happened when converting your Pokémon!";
@@ -1316,13 +1368,13 @@ namespace SysBot.Pokemon
                     return false;
                 }
 
-                var oldName = pk.IsNicknamed ? pk.Nickname : $"{SpeciesName.GetSpeciesNameGeneration(pk.Species, 2, 8)}{TradeCordHelperUtil.FormOutput(pk.Species, pk.Form, out _)}";
-                var timeStr = TradeCordHelperUtil.TimeOfDayString(user.UserInfo.TimeZoneOffset, false);
+                var oldName = pk.IsNicknamed ? pk.Nickname : $"{SpeciesName.GetSpeciesNameGeneration(pk.Species, 2, 8)}{TradeCordHelperUtil<T>.FormOutput(pk.Species, pk.Form, out _)}";
+                var timeStr = TradeCordHelperUtil<T>.TimeOfDayString(user.UserInfo.TimeZoneOffset, false);
                 var tod = TradeExtensions.EnumParse<TimeOfDay>(timeStr);
                 if (tod == TimeOfDay.Dawn)
                     tod = TimeOfDay.Morning;
 
-                if (!Util.EvolvePK(pk, tod, out string message, out PK8? shedinja, alcremie, regional))
+                if (!Util.EvolvePK(pk, tod, out string message, out T? shedinja, alcremie, regional))
                 {
                     result.Message = message;
                     if (message.Contains("Failed to evolve"))
@@ -1330,7 +1382,7 @@ namespace SysBot.Pokemon
                     return false;
                 }
 
-                var form = TradeCordHelperUtil.FormOutput(pk.Species, pk.Form, out _);
+                var form = TradeCordHelperUtil<T>.FormOutput(pk.Species, pk.Form, out _);
                 var species = SpeciesName.GetSpeciesNameGeneration(pk.Species, 2, 8);
 
                 user.Catches[match.ID].Species = species;
@@ -1340,17 +1392,17 @@ namespace SysBot.Pokemon
                 {
                     user.Daycare.Species1 = pk.Species;
                     user.Daycare.Form1 = form;
-                    var namesDC = new string[] { "@form1", "@species1", "@user_id", "@id" };
+                    var namesDC = new string[] { "@form1", "@species1", "@user_id", "@id1" };
                     var objDC = new object[] { form, pk.Species, user.UserInfo.UserID, match.ID };
-                    result.SQLCommands.Add(DBCommandConstructor("daycare", "form1 = ?, species1 = ?", "where user_id = ? and id = ?", namesDC, objDC, SQLTableContext.Update));
+                    result.SQLCommands.Add(DBCommandConstructor("daycare", "form1 = ?, species1 = ?", "where user_id = ? and id1 = ?", namesDC, objDC, SQLTableContext.Update));
                 }
                 else if (user.Daycare.ID2 == match.ID)
                 {
                     user.Daycare.Form2 = form;
                     user.Daycare.Species2 = pk.Species;
-                    var namesDC = new string[] { "@form2", "@species2", "@user_id", "@id" };
+                    var namesDC = new string[] { "@form2", "@species2", "@user_id", "@id2" };
                     var objDC = new object[] { form, pk.Species, user.UserInfo.UserID, match.ID };
-                    result.SQLCommands.Add(DBCommandConstructor("daycare", "form2 = ?, species2 = ?", "where user_id = ? and id = ?", namesDC, objDC, SQLTableContext.Update));
+                    result.SQLCommands.Add(DBCommandConstructor("daycare", "form2 = ?, species2 = ?", "where user_id = ? and id2 = ?", namesDC, objDC, SQLTableContext.Update));
                 }
 
                 var names = new string[] { "@form", "@species", "@nickname", "@user_id", "@id" };
@@ -1449,15 +1501,9 @@ namespace SysBot.Pokemon
                 else if (item == TCItems.GriseousOrb && pk.Species == (int)Species.Giratina)
                 {
                     updateBuddy = true;
+                    int index = pk.PersonalInfo.GetAbilityIndex(pk.Ability);
                     pk.Form = 1;
-                    pk.RefreshAbility(pk.AbilityNumber);
-                }
-
-                if (updateBuddy)
-                {
-                    var namesB = new string[] { "@ability", "@user_id" };
-                    var objB = new object[] { pk.Ability, user.UserInfo.UserID };
-                    result.SQLCommands.Add(DBCommandConstructor("buddy", "ability = ?", "where user_id = ?", namesB, objB, SQLTableContext.Update));
+                    pk.RefreshAbility(index);
                 }
 
                 var la = new LegalityAnalysis(pk);
@@ -1465,6 +1511,13 @@ namespace SysBot.Pokemon
                 {
                     result.Message = $"Oops, something went wrong while giving an item to {pk.Nickname}!";
                     return false;
+                }
+
+                if (updateBuddy)
+                {
+                    var namesB = new string[] { "@ability", "@user_id" };
+                    var objB = new object[] { pk.Ability, user.UserInfo.UserID };
+                    result.SQLCommands.Add(DBCommandConstructor("buddy", "ability = ?", "where user_id = ?", namesB, objB, SQLTableContext.Update));
                 }
 
                 userItem.ItemCount--;
@@ -1486,7 +1539,7 @@ namespace SysBot.Pokemon
                 result.SQLCommands.Add(DBCommandConstructor("binary_catches", "data = ?", "where user_id = ? and id = ?", namesU, objU, SQLTableContext.Update));
 
                 var itemStr = Util.GetItemString((int)item);
-                result.Message = $"You gave {(TradeCordHelperUtil.ArticleChoice(itemStr[0]) ? "an" : "a")} {itemStr} to your buddy!";
+                result.Message = $"You gave {(TradeCordHelperUtil<T>.ArticleChoice(itemStr[0]) ? "an" : "a")} {itemStr} to your buddy!";
                 return true;
             }
 
@@ -1609,7 +1662,7 @@ namespace SysBot.Pokemon
                 }
 
                 var itemStr = Util.GetItemString(pk.HeldItem);
-                result.Message = $"You took {(TradeCordHelperUtil.ArticleChoice(itemStr[0]) ? "an" : "a")} {itemStr} from your buddy!";
+                result.Message = $"You took {(TradeCordHelperUtil<T>.ArticleChoice(itemStr[0]) ? "an" : "a")} {itemStr} from your buddy!";
 
                 pk.HeldItem = 0;
                 bool updateBuddy = false;
@@ -1807,7 +1860,7 @@ namespace SysBot.Pokemon
             Util.Rng.EggShinyRNG += count;
         }
 
-        private PK8 EggProcess(TCDaycare dc, EvoCriteria evo1, EvoCriteria evo2, int ball1, int ball2, string trainerInfo, out string msg)
+        private T EggProcess(TCDaycare dc, EvoCriteria evo1, EvoCriteria evo2, int ball1, int ball2, string trainerInfo, out string msg)
         {
             msg = string.Empty;
             if (evo1.Species == 0 || evo2.Species == 0)
@@ -1821,7 +1874,7 @@ namespace SysBot.Pokemon
 
             var pk = Util.EggRngRoutine(evo1, evo2, ball1, ball2, trainerInfo, star, square);
             var eggSpeciesName = SpeciesName.GetSpeciesNameGeneration(pk.Species, 2, 8);
-            var eggForm = TradeCordHelperUtil.FormOutput(pk.Species, pk.Form, out _);
+            var eggForm = TradeCordHelperUtil<T>.FormOutput(pk.Species, pk.Form, out _);
             var finalEggName = eggSpeciesName + eggForm;
 
             pk.ResetPartyStats();
@@ -1857,12 +1910,13 @@ namespace SysBot.Pokemon
                         var objH = new object[] { pk.Nickname, user.UserInfo.UserID };
                         result.SQLCommands.Add(DBCommandConstructor("buddy", "name = ?", "where user_id = ?", namesH, objH, SQLTableContext.Update));
 
-                        namesH = new string[] { "@is_egg", "@user_id", "@id" };
-                        objH = new object[] { 0, user.UserInfo.UserID, match.ID };
-                        result.SQLCommands.Add(DBCommandConstructor("catches", "is_egg = ?", "where user_id = ? and id = ?", namesH, objH, SQLTableContext.Update));
+                        namesH = new string[] { "@nickname", "@is_egg", "@user_id", "@id" };
+                        objH = new object[] { pk.Nickname, 0, user.UserInfo.UserID, match.ID };
+                        result.SQLCommands.Add(DBCommandConstructor("catches", "nickname = ?, is_egg = ?", "where user_id = ? and id = ?", namesH, objH, SQLTableContext.Update));
 
                         user.Buddy.Nickname = pk.Nickname;
                         user.Catches[match.ID].Egg = false;
+                        user.Catches[match.ID].Nickname = pk.Nickname;
                     }
                 }
                 else if (pk.CurrentLevel < 100 && result.Poke.Species != 0)
@@ -1953,10 +2007,10 @@ namespace SysBot.Pokemon
             return msg;
         }
 
-        private void CatchRegister(Results result, PK8 pk, out int index)
+        private void CatchRegister(Results result, T pk, out int index)
         {
             var speciesName = SpeciesName.GetSpeciesNameGeneration(pk.Species, 2, 8);
-            var form = TradeCordHelperUtil.FormOutput(pk.Species, pk.Form, out _);
+            var form = TradeCordHelperUtil<T>.FormOutput(pk.Species, pk.Form, out _);
             bool isLegend = Util.IsLegendaryOrMythical(speciesName);
             if (speciesName.Contains("Nidoran"))
             {

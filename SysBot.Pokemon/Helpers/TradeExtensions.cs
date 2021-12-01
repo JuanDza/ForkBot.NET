@@ -1,7 +1,9 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Globalization;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using PKHeX.Core;
 using PKHeX.Core.AutoMod;
 
@@ -27,21 +29,34 @@ namespace SysBot.Pokemon
 
         public static T EnumParse<T>(string input) where T : struct, Enum => !Enum.TryParse(input, true, out T result) ? new() : result;
 
-        public static void DittoTrade(PKM pkm)
+        public static bool HasAdName<T>(T pk, out string ad) where T : PKM, new()
         {
+            string pattern = @"(YT$)|(YT\w*$)|(Lab$)|(\.\w*$)|(TV$)|(PKHeX)|(FB:)|(AuSLove)|(ShinyMart)|(Blainette)|(\ com)|(\ org)|(\ net)|(2DOS3)|(PPorg)|(Tik\wok$)|(YouTube)|(IG:)|(TTV\ )|(Tools)|(JokersWrath)|(bot$)";
+            bool ot = Regex.IsMatch(pk.OT_Name, pattern, RegexOptions.IgnoreCase);
+            bool nick = Regex.IsMatch(pk.Nickname, pattern, RegexOptions.IgnoreCase);
+            ad = ot ? pk.OT_Name : nick ? pk.Nickname : "";
+            return ot || nick;
+        }
+
+        public static void DittoTrade<T>(T pkm) where T : PKM, new()
+        {
+            bool bdsp = pkm is PB8;
             var dittoStats = new string[] { "atk", "spe", "spa" };
             var nickname = pkm.Nickname.ToLower();
             pkm.StatNature = pkm.Nature;
-            pkm.Met_Location = 162;
+            pkm.Met_Location = !bdsp ? 162 : 400;
+            if (bdsp)
+                pkm.Met_Level = 29;
+
             pkm.Ball = 21;
             pkm.IVs = new int[] { 31, nickname.Contains(dittoStats[0]) ? 0 : 31, 31, nickname.Contains(dittoStats[1]) ? 0 : 31, nickname.Contains(dittoStats[2]) ? 0 : 31, 31 };
             pkm.ClearHyperTraining();
-            _ = TrashBytes(pkm, new LegalityAnalysis(pkm));
+            TrashBytes(pkm, new LegalityAnalysis(pkm));
         }
 
-        public static void EggTrade(PK8 pk)
+        public static void EggTrade<T>(T pk) where T : PKM, new()
         {
-            pk = (PK8)TrashBytes(pk);
+            bool bdsp = pk is PB8;
             pk.IsNicknamed = true;
             pk.Nickname = pk.Language switch
             {
@@ -56,29 +71,45 @@ namespace SysBot.Pokemon
             };
 
             pk.IsEgg = true;
-            pk.Egg_Location = 60002;
+            pk.Egg_Location = !bdsp ? 60002 : 60010;
             pk.MetDate = DateTime.Parse("2020/10/20");
             pk.EggMetDate = pk.MetDate;
             pk.HeldItem = 0;
             pk.CurrentLevel = 1;
             pk.EXP = 0;
-            pk.DynamaxLevel = 0;
             pk.Met_Level = 1;
-            pk.Met_Location = 30002;
+            pk.Met_Location = !bdsp ? 30002 : 65535;
             pk.CurrentHandler = 0;
             pk.OT_Friendship = 1;
             pk.HT_Name = "";
             pk.HT_Friendship = 0;
-            pk.HT_Language = 0;
-            pk.HT_Gender = 0;
-            pk.HT_Memory = 0;
-            pk.HT_Feeling = 0;
-            pk.HT_Intensity = 0;
+            pk.ClearMemories();
             pk.StatNature = pk.Nature;
             pk.EVs = new int[] { 0, 0, 0, 0, 0, 0 };
             pk.Markings = new int[] { 0, 0, 0, 0, 0, 0, 0, 0 };
             pk.ClearRecordFlags();
             pk.ClearRelearnMoves();
+
+            if (pk is PK8 pk8)
+            {
+                pk8.HT_Language = 0;
+                pk8.HT_Gender = 0;
+                pk8.HT_Memory = 0;
+                pk8.HT_Feeling = 0;
+                pk8.HT_Intensity = 0;
+            }
+            else if (pk is PB8 pb8)
+            {
+                pb8.HT_Language = 0;
+                pb8.HT_Gender = 0;
+                pb8.HT_Memory = 0;
+                pb8.HT_Feeling = 0;
+                pb8.HT_Intensity = 0;
+            }
+
+            pk = TrashBytes(pk);
+            pk.SetDynamaxLevel(0);
+
             var la = new LegalityAnalysis(pk);
             var enc = la.EncounterMatch;
             pk.CurrentFriendship = enc is EncounterStatic s ? s.EggCycles : pk.PersonalInfo.HatchCycles;
@@ -90,7 +121,7 @@ namespace SysBot.Pokemon
             pk.SetSuggestedRibbons(la.EncounterMatch);
         }
 
-        public static void EncounterLogs(PK8 pk, string filepath = "")
+        public static void EncounterLogs<T>(T pk, string filepath = "") where T : PKM, new()
         {
             if (filepath == "")
                 filepath = "EncounterLogPretty.txt";
@@ -103,6 +134,7 @@ namespace SysBot.Pokemon
 
             lock (_syncLog)
             {
+                bool mark = pk is PK8 pk8 && pk8.HasMark();
                 var content = File.ReadAllText(filepath).Split('\n').ToList();
                 var splitTotal = content[0].Split(',');
                 content.RemoveRange(0, 3);
@@ -111,14 +143,14 @@ namespace SysBot.Pokemon
                 int eggTotal = int.Parse(splitTotal[1].Split(' ')[1]) + (pk.IsEgg ? 1 : 0);
                 int starTotal = int.Parse(splitTotal[2].Split(' ')[1]) + (pk.IsShiny && pk.ShinyXor > 0 ? 1 : 0);
                 int squareTotal = int.Parse(splitTotal[3].Split(' ')[1]) + (pk.IsShiny && pk.ShinyXor == 0 ? 1 : 0);
-                int markTotal = int.Parse(splitTotal[4].Split(' ')[1]) + (pk.HasMark() ? 1 : 0);
+                int markTotal = int.Parse(splitTotal[4].Split(' ')[1]) + (mark ? 1 : 0);
 
-                var form = TradeCordHelperUtil.FormOutput(pk.Species, pk.Form, out _);
+                var form = TradeCordHelperUtil<T>.FormOutput(pk.Species, pk.Form, out _);
                 var speciesName = $"{SpeciesName.GetSpeciesNameGeneration(pk.Species, pk.Language, 8)}{form}".Replace(" ", "");
                 var index = content.FindIndex(x => x.Split(':')[0].Equals(speciesName));
 
                 if (index == -1)
-                    content.Add($"{speciesName}: 1, {(pk.IsShiny && pk.ShinyXor > 0 ? 1 : 0)}★, {(pk.IsShiny && pk.ShinyXor == 0 ? 1 : 0)}■, {(pk.HasMark() ? 1 : 0)}🎀, {GetPercent(pokeTotal, 1)}%");
+                    content.Add($"{speciesName}: 1, {(pk.IsShiny && pk.ShinyXor > 0 ? 1 : 0)}★, {(pk.IsShiny && pk.ShinyXor == 0 ? 1 : 0)}■, {(mark ? 1 : 0)}🎀, {GetPercent(pokeTotal, 1)}%");
 
                 var length = index == -1 ? 1 : 0;
                 for (int i = 0; i < content.Count - length; i++)
@@ -129,7 +161,7 @@ namespace SysBot.Pokemon
                         int speciesTotal = int.Parse(sanitized[1]) + 1;
                         int stTotal = int.Parse(sanitized[2]) + (pk.IsShiny && pk.ShinyXor > 0 ? 1 : 0);
                         int sqTotal = int.Parse(sanitized[3]) + (pk.IsShiny && pk.ShinyXor == 0 ? 1 : 0);
-                        int mTotal = int.Parse(sanitized[4]) + (pk.HasMark() ? 1 : 0);
+                        int mTotal = int.Parse(sanitized[4]) + (mark ? 1 : 0);
                         content[i] = $"{speciesName}: {speciesTotal}, {stTotal}★, {sqTotal}■, {mTotal}🎀, {GetPercent(pokeTotal, speciesTotal)}%";
                     }
                     else content[i] = $"{sanitized[0]} {sanitized[1]}, {sanitized[2]}★, {sanitized[3]}■, {sanitized[4]}🎀, {GetPercent(pokeTotal, int.Parse(sanitized[1]))}%";
@@ -148,7 +180,7 @@ namespace SysBot.Pokemon
             }
         }
 
-        private static string GetPercent(int total, int subtotal) => (100.0 * ((double)subtotal / total)).ToString("N2");
+        private static string GetPercent(int total, int subtotal) => (100.0 * ((double)subtotal / total)).ToString("N2", NumberFormatInfo.InvariantInfo);
 
         private static string[] GetSanitizedEncounterLineArray(string content)
         {
@@ -156,20 +188,32 @@ namespace SysBot.Pokemon
             return replace.Aggregate(content, (old, cleaned) => old.Replace(cleaned.Key, cleaned.Value)).Split(' ');
         }
 
-        public static PKM TrashBytes(PKM pkm, LegalityAnalysis? la = null)
+        public static T TrashBytes<T>(T pkm, LegalityAnalysis? la = null) where T : PKM, new()
         {
-            pkm.Nickname = "KOIKOIKOIKOI";
-            pkm.IsNicknamed = true;
-            if (pkm.Version != (int)GameVersion.GO && !pkm.FatefulEncounter)
-                pkm.MetDate = DateTime.Parse("2020/10/20");
-            pkm.SetDefaultNickname(la ?? new LegalityAnalysis(pkm));
+            T pkMet = (T)pkm.Clone();
+            if (pkMet.Version != (int)GameVersion.GO)
+                pkMet.MetDate = DateTime.Parse("2020/10/20");
+
+            var analysis = new LegalityAnalysis(pkMet);
+            T pkTrash = (T)pkMet.Clone();
+            if (analysis.Valid)
+            {
+                pkTrash.IsNicknamed = true;
+                pkTrash.Nickname = "KOIKOIKOIKOI";
+                pkTrash.SetDefaultNickname(la ?? new LegalityAnalysis(pkTrash));
+            }
+
+            if (new LegalityAnalysis(pkTrash).Valid)
+                pkm = pkTrash;
+            else if (analysis.Valid)
+                pkm = pkMet;
             return pkm;
         }
 
-        public static PK8 CherishHandler(MysteryGift mg, ITrainerInfo info)
+        public static T CherishHandler<T>(MysteryGift mg, ITrainerInfo info, int format) where T : PKM, new()
         {
             var mgPkm = mg.ConvertToPKM(info);
-            mgPkm = PKMConverter.IsConvertibleToFormat(mgPkm, 8) ? PKMConverter.ConvertToType(mgPkm, typeof(PK8), out _) : mgPkm;
+            mgPkm = PKMConverter.IsConvertibleToFormat(mgPkm, format) ? PKMConverter.ConvertToType(mgPkm, typeof(T), out _) : mgPkm;
             if (mgPkm != null)
             {
                 mgPkm.SetHandlerandMemory(info);
@@ -188,16 +232,17 @@ namespace SysBot.Pokemon
             }
             else return new();
 
+            mgPkm = TrashBytes((T)mgPkm);
             var la = new LegalityAnalysis(mgPkm);
             if (!la.Valid)
             {
                 mgPkm.SetRandomIVs(6);
                 var showdown = ShowdownParsing.GetShowdownText(mgPkm);
-                var pk = (PK8)AutoLegalityWrapper.GetLegal(info, new ShowdownSet(showdown), out _);
+                var pk = AutoLegalityWrapper.GetLegal(info, new ShowdownSet(showdown), out _);
                 pk.SetAllTrainerData(info);
-                return pk;
+                return (T)pk;
             }
-            else return (PK8)mgPkm;
+            else return (T)mgPkm;
         }
 
         public static string PokeImg(PKM pkm, bool canGmax, bool fullSize)

@@ -5,10 +5,11 @@ using System.Data.SQLite;
 using System.Collections.Generic;
 using System.Threading;
 using PKHeX.Core;
+using PKHeX.Core.AutoMod;
 
 namespace SysBot.Pokemon
 {
-    public abstract class TradeCordDatabase : TradeCordUserBase
+    public abstract class TradeCordDatabase<T> : TradeCordUserBase where T : PKM, new()
     {
         private static readonly string DatabasePath = "TradeCord/TradeCordDB_SWSH.db";
         private static SQLiteConnection Connection = new();
@@ -124,7 +125,7 @@ namespace SysBot.Pokemon
             return user;
         }
 
-        protected T GetLookupAsClassObject<T>(ulong id, string table, string filter = "", bool tableJoin = false)
+        protected A GetLookupAsClassObject<A>(ulong id, string table, string filter = "", bool tableJoin = false)
         {
             var cmd = Connection.CreateCommand();
             cmd.CommandText = $"select * from {table} where {(tableJoin ? "c." : "")}user_id = {id} {filter}";
@@ -145,7 +146,7 @@ namespace SysBot.Pokemon
                 "binary_catches" => CatchPKMReader(reader),
                 _ => throw new NotImplementedException(),
             };
-            return (T)returnObj;
+            return (A)returnObj;
         }
 
         protected void ProcessBulkCommands(List<SQLCommand> cmds, bool delete = false)
@@ -263,11 +264,11 @@ namespace SysBot.Pokemon
             return catches;
         }
 
-        private PK8 CatchPKMReader(SQLiteDataReader reader)
+        private T CatchPKMReader(SQLiteDataReader reader)
         {
-            PK8? pk = null;
+            T? pk = null;
             if (reader.Read())
-                pk = (PK8?)PKMConverter.GetPKMfromBytes((byte[])reader["data"]);
+                pk = (T?)PKMConverter.GetPKMfromBytes((byte[])reader["data"]);
             return pk ?? new();
         }
 
@@ -382,7 +383,7 @@ namespace SysBot.Pokemon
         {
             try
             {
-                TradeCordHelper.VacuumLock = true;
+                TradeCordHelper<T>.VacuumLock = true;
                 Thread.Sleep(0_500);
                 var path = "TradeCord/TradeCordDB_SWSH_backup.db";
                 var path2 = "TradeCord/TradeCordDB_SWSH_backup2.db";
@@ -416,6 +417,7 @@ namespace SysBot.Pokemon
             var cmd = Connection.CreateCommand();
             cmd.CommandText = $"select * from users";
 
+            Base.EchoUtil.Echo("Checking for inactive TradeCord users...");
             using SQLiteDataReader reader = cmd.ExecuteReader();
             while (reader.Read())
             {
@@ -424,12 +426,16 @@ namespace SysBot.Pokemon
                 if (DateTime.Now.Subtract(date).TotalDays >= 30)
                     ids.Add(id);
             }
+            reader.Close();
 
             if (ids.Count > 0)
             {
-                cmd.CommandText = $"delete from users where user_id in ({string.Join(",", ids)})";
+                var users = string.Join(",", ids);
+                cmd.CommandText = $"PRAGMA foreign_keys = ON;delete from users where user_id in ({users})";
                 cmd.ExecuteNonQuery();
+                Base.EchoUtil.Echo($"Removed {ids.Count} inactive TradeCord users.");
             }
+            else Base.EchoUtil.Echo("No inactive TradeCord users found to remove.");
         }
 
         protected bool CreateDB()
@@ -457,7 +463,7 @@ namespace SysBot.Pokemon
                     cmd.CommandText = "insert into dex_flavor(species) values(@species)";
                     cmd.Parameters.AddWithValue("@species", i);
                     cmd.ExecuteNonQuery();
-                    TradeCordHelperUtil.FormOutput(i, 0, out string[] forms);
+                    TradeCordHelperUtil<T>.FormOutput(i, 0, out string[] forms);
 
                     for (int f = 0; f < forms.Length; f++)
                     {
@@ -490,9 +496,43 @@ namespace SysBot.Pokemon
                 if (!MigrateToDB())
                 {
                     Connection.Dispose();
+                    Connected = false;
                     return false;
                 }
             }
+
+            if (typeof(T) == typeof(PK8))
+            {
+                var cmd = Connection.CreateCommand();
+                cmd.CommandText = "create table if not exists legality_fix(issue text not null, fixed int default 0)";
+                cmd.ExecuteNonQuery();
+                cmd.CommandText = "insert into legality_fix(issue,fixed) select 'ht_var', 0 where not exists(select 1 from legality_fix where issue = 'ht_var')";
+                cmd.ExecuteNonQuery();
+
+                cmd.CommandText = "insert into legality_fix(issue,fixed) select 'egg_bug', 0 where not exists(select 1 from legality_fix where issue = 'egg_bug')";
+                cmd.ExecuteNonQuery();
+
+                bool wasFixedHT = false;
+                cmd.CommandText = "select * from legality_fix where issue = 'ht_var'";
+                var reader = cmd.ExecuteReader();
+                if (reader.Read())
+                    wasFixedHT = (int)reader["fixed"] == 1;
+                reader.Close();
+
+                if (!wasFixedHT)
+                    LegalityFixPK8();
+
+                bool wasFixedEgg = false;
+                cmd.CommandText = "select * from legality_fix where issue = 'egg_bug'";
+                reader = cmd.ExecuteReader();
+                if (reader.Read())
+                    wasFixedEgg = (int)reader["fixed"] == 1;
+                reader.Close();
+
+                if (!wasFixedEgg)
+                    EggBug();
+            }
+
             return true;
         }
 
@@ -636,7 +676,7 @@ namespace SysBot.Pokemon
                                             {
                                                 var array = Directory.GetFiles(dir).Where(x => x.Contains(".pk")).Select(x => int.Parse(x.Split('\\')[2].Split('-', '_')[0].Replace("★", "").Trim())).ToArray();
                                                 array = array.OrderBy(x => x).ToArray();
-                                                catches[c].ID = new TradeCordHelperUtil().Indexing(array);
+                                                catches[c].ID = new TradeCordHelperUtil<T>().Indexing(array);
                                             }
 
                                             PK8? pk = null;
@@ -718,6 +758,211 @@ namespace SysBot.Pokemon
 
             string[] str = reader.ReadToEnd().Split('_')[1].Split('\n')[species].Split('|');
             return str[^1].Replace("'", "''");
+        }
+
+        private void LegalityFixPK8()
+        {
+            Base.EchoUtil.Echo("Beginning to scan for and fix legality errors. This may take a while.");
+            int updated = 0;
+            List<SQLCommand> cmds = new();
+            var cmd = Connection.CreateCommand();
+            cmd.CommandText = "select * from binary_catches";
+
+            var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                bool write = false;
+                ulong user_id = ulong.Parse(reader["user_id"].ToString());
+                int catch_id = (int)reader["id"];
+                PK8 pk = (PK8?)PKMConverter.GetPKMfromBytes((byte[])reader["data"]) ?? new();
+
+                var la = new LegalityAnalysis(pk);
+                if (!la.Valid)
+                {
+                    var sav = new SimpleTrainerInfo() { OT = pk.OT_Name, Gender = pk.OT_Gender, Generation = pk.Generation, Language = pk.Language, SID = pk.TrainerSID7, TID = pk.TrainerID7 };
+                    var results = la.Results.FirstOrDefault(x => !x.Valid && x.Identifier != CheckIdentifier.Memory);
+                    pk.SetHandlerandMemory(sav);
+                    if (results != default)
+                    {
+                        switch (results.Identifier)
+                        {
+                            case CheckIdentifier.Evolution:
+                                {
+                                    if (pk.Species == (int)Species.Lickilicky && pk.Met_Location != 162 && pk.Met_Location != 244 && !pk.RelearnMoves.Contains(205))
+                                        SetMoveOrRelearnByIndex(pk, 205, true);
+                                }; break;
+                            case CheckIdentifier.Encounter:
+                                {
+                                    if (pk.Met_Location == 162)
+                                    {
+                                        pk.SetAbilityIndex(0);
+                                        while (!new LegalityAnalysis(pk).Valid && pk.Met_Level < 60)
+                                        {
+                                            pk.Met_Level += 1;
+                                            if (pk.CurrentLevel < pk.Met_Level)
+                                                pk.CurrentLevel = pk.Met_Level + 1;
+                                        }
+                                    }
+                                }; break;
+                            case CheckIdentifier.Form:
+                                {
+                                    if (pk.Species == (int)Species.Keldeo && pk.Form == 1 && !pk.Moves.Contains(548))
+                                        SetMoveOrRelearnByIndex(pk, 548, false);
+                                }; break;
+                            case CheckIdentifier.Nickname:
+                                {
+                                    if (la.EncounterMatch is MysteryGift mg)
+                                    {
+                                        var mgPkm = mg.ConvertToPKM(sav);
+                                        if (mgPkm.IsNicknamed)
+                                            pk.SetNickname(mgPkm.Nickname);
+                                        else pk.SetDefaultNickname(la);
+                                        pk.SetHandlerandMemory(sav);
+                                    }
+                                    else pk.SetDefaultNickname(la);
+                                }; break;
+                        };
+                    }
+
+                    la = new LegalityAnalysis(pk);
+                    if (!la.Valid)
+                    {
+                        Base.LogUtil.LogError($"Catch {catch_id} (user {user_id}) is illegal, trying to legalize.", "[SQLite]");
+                        pk = (PK8)AutoLegalityWrapper.LegalizePokemon(pk);
+                        if (!new LegalityAnalysis(pk).Valid)
+                        {
+                            Base.LogUtil.LogError($"Failed to legalize, removing entry...\n{la.Report()}", "[SQLite]");
+                            var namesR = new string[] { "@user_id", "@id" };
+                            var objR = new object[] { user_id, catch_id };
+                            cmds.Add(new() { CommandText = "delete from binary_catches where user_id = ? and id = ?", Names = namesR, Values = objR });
+                            cmds.Add(new() { CommandText = "delete from catches where user_id = ? and id = ?", Names = namesR, Values = objR });
+                            updated++;
+                            continue;
+                        }
+                    }
+                }
+
+                if (write)
+                {
+                    var names = new string[] { "@data", "@user_id", "@id" };
+                    var obj = new object[] { pk.DecryptedPartyData, user_id, catch_id };
+                    cmds.Add(new() { CommandText = "update binary_catches set data = ? where user_id = ? and id = ?", Names = names, Values = obj });
+
+                    names = new string[] { "@is_shiny", "@ball", "@nickname", "@form", "@is_egg", "@is_event", "@user_id", "@id" };
+                    obj = new object[] { pk.IsShiny, (Ball)pk.Ball, pk.Nickname, TradeCordHelperUtil<T>.FormOutput(pk.Species, pk.Form, out _), pk.IsEgg, pk.FatefulEncounter, user_id, catch_id };
+                    cmds.Add(new() { CommandText = "update catches set is_shiny = ?, ball = ?, nickname = ?, form = ?, is_egg = ?, is_event = ? where user_id = ? and id = ?", Names = names, Values = obj });
+                    updated++;
+                }
+            }
+            reader.Close();
+
+            if (updated > 0)
+            {
+                using var tran = Connection.BeginTransaction();
+                for (int i = 0; i < cmds.Count; i++)
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = cmds[i].CommandText;
+                    var parameters = ParameterConstructor(cmds[i].Names, cmds[i].Values);
+                    cmd.Parameters.AddRange(parameters);
+                    cmd.ExecuteNonQuery();
+                }
+                tran.Commit();
+
+                cmd.CommandText = $"update legality_fix set fixed = 1 where issue = 'ht_var'";
+                cmd.ExecuteNonQuery();
+            }
+            Base.EchoUtil.Echo($"Scan complete! Updated {updated} records.");
+        }
+
+        private void EggBug()
+        {
+            Base.EchoUtil.Echo("Beginning to scan for species nicknamed \"Egg\". This may take a while.");
+            List<SQLCommand> cmds = new();
+            int updated = 0;
+
+            var cmd = Connection.CreateCommand();
+            cmd.CommandText = "select * from binary_catches b inner join catches c on b.user_id = c.user_id and b.id = c.id";
+            var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                ulong user_id = ulong.Parse(reader["user_id"].ToString());
+                int catch_id = (int)reader["id"];
+                string nickname = reader["nickname"].ToString();
+                PK8 pk = (PK8?)PKMConverter.GetPKMfromBytes((byte[])reader["data"]) ?? new();
+                var nick = pk.Language switch
+                {
+                    1 => "タマゴ",
+                    3 => "Œuf",
+                    4 => "Uovo",
+                    5 => "Ei",
+                    7 => "Huevo",
+                    8 => "알",
+                    9 or 10 => "蛋",
+                    _ => "Egg",
+                };
+
+                if ((pk.Nickname == nick || nickname == nick || nickname == "Egg") && !pk.IsEgg)
+                {
+                    pk.IsNicknamed = false;
+                    pk.Nickname = SpeciesName.GetSpeciesNameGeneration(pk.Species, pk.Language, 8);
+                    var la = new LegalityAnalysis(pk);
+                    if (la.Valid)
+                    {
+                        var names = new string[] { "@data", "@user_id", "@id" };
+                        var obj = new object[] { pk.DecryptedPartyData, user_id, catch_id };
+                        cmds.Add(new() { CommandText = "update binary_catches set data = ? where user_id = ? and id = ?", Names = names, Values = obj });
+
+                        names = new string[] { "@nickname", "@user_id", "@id" };
+                        obj = new object[] { pk.Nickname, user_id, catch_id };
+                        cmds.Add(new() { CommandText = "update catches set nickname = ? where user_id = ? and id = ?", Names = names, Values = obj });
+
+                        names = new string[] { "@name", "@ability", "@user_id", "@id" };
+                        obj = new object[] { pk.Nickname, pk.Ability, user_id, catch_id };
+                        cmds.Add(new() { CommandText = "update buddy set name = ?, ability = ? where user_id = ? and id = ?", Names = names, Values = obj });
+                        updated++;
+                    }
+                    else Base.LogUtil.LogError($"Catch {catch_id} (user {user_id}) is illegal.", "[SQLite]");
+                }
+            }
+            reader.Close();
+
+            if (updated > 0)
+            {
+                using var tran = Connection.BeginTransaction();
+                for (int i = 0; i < cmds.Count; i++)
+                {
+                    cmd = Connection.CreateCommand();
+                    cmd.Transaction = tran;
+                    cmd.CommandText = cmds[i].CommandText;
+                    var parameters = ParameterConstructor(cmds[i].Names, cmds[i].Values);
+                    cmd.Parameters.AddRange(parameters);
+                    cmd.ExecuteNonQuery();
+                }
+                tran.Commit();
+
+                cmd.CommandText = $"update legality_fix set fixed = 1 where issue = 'egg_bug'";
+                cmd.ExecuteNonQuery();
+            }
+            Base.EchoUtil.Echo($"Scan complete! Updated {updated} records.");
+        }
+
+        private void SetMoveOrRelearnByIndex(PK8 pk, int move, bool relearn)
+        {
+            int index = relearn ? pk.RelearnMoves.ToList().IndexOf(0) : pk.Moves.ToList().IndexOf(0);
+            if (index == -1 && !relearn)
+                pk.Move4 = move;
+            else if (index == -1 && relearn)
+                return;
+
+            switch (index)
+            {
+                case 0: _ = relearn ? pk.RelearnMove1 = move : pk.Move1 = move; break;
+                case 1: _ = relearn ? pk.RelearnMove2 = move : pk.Move2 = move; break;
+                case 2: _ = relearn ? pk.RelearnMove3 = move : pk.Move3 = move; break;
+                case 3: _ = relearn ? pk.RelearnMove4 = move : pk.Move4 = move; break;
+            };
+            pk.HealPP();
         }
     }
 }
