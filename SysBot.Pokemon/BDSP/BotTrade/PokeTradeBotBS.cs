@@ -360,6 +360,10 @@ namespace SysBot.Pokemon
                 counts.AddCompletedDistribution();
             else if (poke.Type == PokeTradeType.Clone)
                 counts.AddCompletedClones();
+            else if (poke.Type == PokeTradeType.FixOT)
+                counts.AddCompletedFixOTs();
+            else if (poke.Type == PokeTradeType.SupportTrade)
+                counts.AddCompletedSupportTrades();
             else
                 counts.AddCompletedTrade();
 
@@ -367,7 +371,7 @@ namespace SysBot.Pokemon
             {
                 var subfolder = poke.Type.ToString().ToLower();
                 DumpPokemon(DumpSetting.DumpFolder, subfolder, received); // received by bot
-                if (poke.Type is PokeTradeType.Specific or PokeTradeType.Clone)
+                if (poke.Type is PokeTradeType.Specific or PokeTradeType.Clone or PokeTradeType.FixOT or PokeTradeType.SupportTrade)
                     DumpPokemon(DumpSetting.DumpFolder, "traded", toSend); // sent to partner
             }
         }
@@ -424,7 +428,7 @@ namespace SysBot.Pokemon
             await Click(A, 0_050, token).ConfigureAwait(false);
             await PressAndHold(A, 1_500, 0, token).ConfigureAwait(false);
 
-            await Click(A, 1_000, token).ConfigureAwait(false); // Would you like to enter? Screen
+            await Click(A, 2_000, token).ConfigureAwait(false); // Would you like to enter? Screen
 
             Log("Selecting Link Code room.");
             // Link code selection index
@@ -846,34 +850,24 @@ namespace SysBot.Pokemon
             await SetBoxPokemonAbsolute(BoxStartOffset, clone, token, sav).ConfigureAwait(false);
             poke.SendNotification(this, "Now confirm the trade!");
             await Click(A, 0_800, token).ConfigureAwait(false);
-            await Click(A, 0_500, token).ConfigureAwait(false);
+            await Click(A, 6_000, token).ConfigureAwait(false);
 
-            var valid = false;
-            var offset = 0ul;
-            while (!valid)
-            {
-                await Task.Delay(0_500, token).ConfigureAwait(false);
-                (valid, offset) = await ValidatePointerAll(Offsets.LinkTradePartnerPokemonPointer, token).ConfigureAwait(false);
-            }
-
-            await Task.Delay(5_000, token).ConfigureAwait(false);
-            var pk2 = await ReadUntilPresent(offset, 1_000, 0_500, BoxFormatSlotSize, token).ConfigureAwait(false);
-            bool changed = pk2 == null || clone.Species != pk2.Species || offered.OT_Name != pk2.OT_Name;
+            var pk2 = await ReadPokemon(LinkTradePokemonOffset, token).ConfigureAwait(false);
+            var comp = await SwitchConnection.ReadBytesAbsoluteAsync(LinkTradePokemonOffset, 8, token).ConfigureAwait(false);
+            bool changed = pk2 == null || comp != lastOffered || clone.Species != pk2.Species || offered.OT_Name != pk2.OT_Name;
             if (changed)
             {
                 Log($"{name} changed the shown Pokémon ({(Species)clone.Species}){(pk2 != null ? $" to {(Species)pk2.Species}" : "")}");
                 poke.SendNotification(this, "**Send away the originally shown Pokémon, please!**");
-                var timer = 10_000;
-                while (changed)
-                {
-                    pk2 = await ReadUntilPresent(offset, 1_000, 0_200, BoxFormatSlotSize, token).ConfigureAwait(false);
-                    changed = pk2 == null || clone.Species != pk2.Species || offered.OT_Name != pk2.OT_Name;
-                    await Task.Delay(1_000, token).ConfigureAwait(false);
-                    timer -= 1_000;
-                    if (timer <= 0)
-                        break;
-                }
+
+                bool verify = await ReadUntilChanged(LinkTradePokemonOffset, comp, 10_000, 0_200, false, true, token).ConfigureAwait(false);
+                if (verify)
+                    verify = await ReadUntilChanged(LinkTradePokemonOffset, lastOffered, 5_000, 0_200, true, true, token).ConfigureAwait(false);
+                changed = !verify && (pk2 == null || clone.Species != pk2.Species || offered.OT_Name != pk2.OT_Name);
             }
+
+            // Update the last Pokémon they showed us.
+            lastOffered = await SwitchConnection.ReadBytesAbsoluteAsync(LinkTradePokemonOffset, 8, token).ConfigureAwait(false);
 
             if (changed)
             {

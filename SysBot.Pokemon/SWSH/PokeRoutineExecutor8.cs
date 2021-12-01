@@ -349,10 +349,10 @@ namespace SysBot.Pokemon
 
                 if (sw.ElapsedMilliseconds < waitms - 4_000) // Give it ample time to finish the pirouette end animation before correcting position
                 {
-                    await SetStick(SwitchStick.LEFT, -3_300, 0, 50, token).ConfigureAwait(false); // ←
-                    await SetStick(SwitchStick.LEFT, 0, -3_300, 50, token).ConfigureAwait(false); // ↓
-                    await SetStick(SwitchStick.LEFT, 3_300, 0, 50, token).ConfigureAwait(false); // →
-                    await SetStick(SwitchStick.LEFT, 0, 3_300, 50, token).ConfigureAwait(false); // ↑
+                    await SetStick(SwitchStick.LEFT, -3_500, 0, 0, token).ConfigureAwait(false); // ←
+                    await SetStick(SwitchStick.LEFT, 0, -3_500, 0, token).ConfigureAwait(false); // ↓
+                    await SetStick(SwitchStick.LEFT, 3_500, 0, 0, token).ConfigureAwait(false); // →
+                    await SetStick(SwitchStick.LEFT, 0, 3_500, 0, token).ConfigureAwait(false); // ↑
                 }
                 else await SetStick(SwitchStick.LEFT, 0, 0, 0_100, token).ConfigureAwait(false);
             } while (sw.ElapsedMilliseconds < waitms);
