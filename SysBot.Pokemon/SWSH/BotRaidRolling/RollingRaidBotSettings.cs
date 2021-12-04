@@ -46,6 +46,9 @@ namespace SysBot.Pokemon
         [Category(Hosting), Description("If enabled, it will check if your den unexpectedly has watts appear. If watts appear, it will attempt to fix it.")]
         public bool RolloverPrevention { get; set; } = false;
 
+        [Category(Hosting), Description("If enabled, it will re-host a rolled lobby if no one readies up in time instead of restarting the game to save time.")]
+        public bool RehostEmptyLobby { get; set; } = false;
+
         [Category(Hosting), Description("Minimum amount of seconds to wait before starting a raid. Ranges from 0 to 180 seconds.")]
         public int MinTimeToWait { get; set; } = 90;
 

@@ -268,11 +268,17 @@ namespace SysBot.Pokemon
                 await Click(DUP, 1_000, token).ConfigureAwait(false);
                 await Click(A, 1_000, token).ConfigureAwait(false);
             }
-            else if (!unexpected)// Don't waste time; re-host.
+            else if ((Settings.RehostEmptyLobby || softLock || Settings.DaysToRoll == 0) && !unexpected) // Don't waste time; re-host.
             {
                 if (await AirplaneLobbyExit(token).ConfigureAwait(false))
                     return true;
                 else return false;
+            }
+            else if (!unexpected && !Settings.RehostEmptyLobby)
+            {
+                EchoUtil.Echo("Nobody readied up in time, resetting the game because we want to keep rolling...");
+                await ResetGameAsync(token).ConfigureAwait(false);
+                return false;
             }
 
             /* Press A and check if we entered a raid.  If other users don't lock in,
@@ -768,7 +774,7 @@ namespace SysBot.Pokemon
             IVString = SeedSearchUtil.GetCurrentFrameInfo(RaidInfo, flawless, RaidInfo.Den.Seed, out uint shinyType);
 
             var shiny = shinyType == 1 ? "\nShiny: Star" : shinyType == 2 ? "\nShiny: Square" : "";
-            raidPk = (PK8)AutoLegalityWrapper.GetTrainerInfo(8).GetLegal(AutoLegalityWrapper.GetTemplate(new ShowdownSet($"{speciesStr}{formStr}{(gmax ? "-Gmax" : "")}{shiny}")), out _);
+            raidPk = (PK8)AutoLegalityWrapper.GetTrainerInfo<PK8>().GetLegal(AutoLegalityWrapper.GetTemplate(new ShowdownSet($"{speciesStr}{formStr}{(gmax ? "-Gmax" : "")}{shiny}")), out _);
 
             bool formLock = Settings.FormLock == string.Empty || formStr.ToLower() == Settings.FormLock.ToLower();
             raidBossString = $"{speciesStr}{formStr}{(gmax ? "-Gmax" : "")}";
