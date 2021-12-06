@@ -211,6 +211,7 @@ namespace SysBot.Pokemon
             if (code >= 0)
             {
                 // Set Link code
+                await Click(DLEFT, 0_100, token).ConfigureAwait(false); // Useless button press to kickstart dropped buttons due to async weirdness?
                 await Click(PLUS, 1_000, token).ConfigureAwait(false);
                 await EnterLinkCode(code, Hub.Config, token).ConfigureAwait(false);
                 await Click(PLUS, 2_000, token).ConfigureAwait(false);
