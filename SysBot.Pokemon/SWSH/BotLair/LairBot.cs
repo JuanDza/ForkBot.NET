@@ -481,7 +481,7 @@ namespace SysBot.Pokemon
                     }
 
                     bool caughtRegular = !caughtLegend && pk.IsShiny;
-                    if (caughtLegend && (Settings.UseStopConditionsPathReset && StopConditionSettings.EncounterFound(pk, DesiredMinIVs, DesiredMaxIVs, NewSCSettings) || Settings.StopOnLegendary))
+                    if (caughtLegend && (Settings.UseStopConditionsPathReset && StopConditionSettings.EncounterFound(pk, DesiredMinIVs, DesiredMaxIVs, NewSCSettings, null) || Settings.StopOnLegendary))
                         StopBot = true;
 
                     TradeExtensions.EncounterLogs(pk, "EncounterLogPretty_Lair.txt");
@@ -558,7 +558,7 @@ namespace SysBot.Pokemon
             TradeExtensions.EncounterLogs(LairBoss);
             Log($"Reset {ResetCount} {Environment.NewLine}{ShowdownParsing.GetShowdownText(LairBoss)}{Environment.NewLine}");
 
-            if (!StopConditionSettings.EncounterFound(LairBoss, DesiredMinIVs, DesiredMaxIVs, NewSCSettings))
+            if (!StopConditionSettings.EncounterFound(LairBoss, DesiredMinIVs, DesiredMaxIVs, NewSCSettings, null))
             {
                 Log("No match found, restarting the game...");
                 await GameRestart(token).ConfigureAwait(false);
