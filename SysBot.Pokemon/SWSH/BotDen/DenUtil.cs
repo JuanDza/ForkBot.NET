@@ -156,7 +156,7 @@ namespace SysBot.Pokemon
                 var ability = (uint)(isEvent ? raidInfo.RaidDistributionEncounterTable.Entries(i).Value.Ability : raidInfo.RaidEncounterTable.Entries(i).Value.Ability);
                 rng = SeedSearchUtil.GetAbility(rng, ability, out uint abilityT);
 
-                var pkm = AutoLegalityWrapper.GetTrainerInfo(8).GetLegal(AutoLegalityWrapper.GetTemplate(new ShowdownSet($"{speciesName}{formStr}")), out _);
+                var pkm = AutoLegalityWrapper.GetTrainerInfo<PK8>().GetLegal(AutoLegalityWrapper.GetTemplate(new ShowdownSet($"{speciesName}{formStr}")), out _);
                 pkm.SetAbilityIndex((int)abilityT);
 
                 var ratio = pkm.PersonalInfo.OnlyFemale ? 254 : pkm.PersonalInfo.OnlyMale ? 0 : pkm.PersonalInfo.Genderless ? 255 : pkm.PersonalInfo.Gender;

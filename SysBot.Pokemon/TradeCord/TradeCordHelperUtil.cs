@@ -235,7 +235,7 @@ namespace SysBot.Pokemon
 
             var set = new ShowdownSet($"Egg({speciesRng}{formHelper}){ballRng}{shinyRng}\n{trainerInfo}");
             var template = AutoLegalityWrapper.GetTemplate(set);
-            var sav = AutoLegalityWrapper.GetTrainerInfo(8);
+            var sav = AutoLegalityWrapper.GetTrainerInfo<T>();
             var pk = (T)sav.GetLegal(template, out _);
 
             TradeExtensions.EggTrade(pk);
@@ -883,7 +883,7 @@ namespace SysBot.Pokemon
                 set.CanGigantamax = true;
 
             var template = AutoLegalityWrapper.GetTemplate(set);
-            var sav = AutoLegalityWrapper.GetTrainerInfo(8);
+            var sav = AutoLegalityWrapper.GetTrainerInfo<T>();
             var pk = sav.GetLegal(template, out string result);
 
             if (pk.FatefulEncounter || result != "Regenerated")
