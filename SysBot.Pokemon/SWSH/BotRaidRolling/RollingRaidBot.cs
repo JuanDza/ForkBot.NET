@@ -72,9 +72,7 @@ namespace SysBot.Pokemon
                 await InitializeHardware(Settings, token).ConfigureAwait(false);
 
                 Log("Reading den data.");
-                bool startRoutine = await ReadDenData(token).ConfigureAwait(false);
-
-                if (startRoutine)
+                if (await ReadDenData(token).ConfigureAwait(false))
                 {
                     Log("Starting main RollingRaidBot loop.");
                     await InnerLoop(token).ConfigureAwait(false);
@@ -87,7 +85,6 @@ namespace SysBot.Pokemon
             }
 
             Log($"Ending {nameof(RollingRaidBot)} loop.");
-            RaidEmbedSource.Cancel();
             await HardStop().ConfigureAwait(false);
         }
 
@@ -133,8 +130,7 @@ namespace SysBot.Pokemon
                 }
 
                 int code = Settings.GetRandomRaidCode();
-                bool continueRoutine = await AutoRollDen(code, token).ConfigureAwait(false);
-                if (!continueRoutine)
+                if (!await AutoRollDen(code, token).ConfigureAwait(false))
                     return;
 
                 Log($"Raid host {encounterCount} finished.");
@@ -148,9 +144,8 @@ namespace SysBot.Pokemon
 
         public override async Task HardStop()
         {
-            if (RollingRaidEmbedsInitialized)
-                RaidEmbedSource.Cancel();
-
+            RollingRaidEmbedsInitialized = false;
+            RaidEmbedSource.Cancel();
             await CleanExit(Settings, CancellationToken.None).ConfigureAwait(false);
         }
 
@@ -198,20 +193,16 @@ namespace SysBot.Pokemon
                 }
             }
 
-            if (!RaidInfo.Den.WattsHarvested)
-                await ClearWatts(token).ConfigureAwait(false);
-
             if (unexpectedBattle)
                 await EnsureConnectedToYComm(Hub.Config, token).ConfigureAwait(false);
 
             // Press A and stall out a bit for the loading
-            await Click(A, 5_000 + Hub.Config.Timings.ExtraTimeLoadRaid, token).ConfigureAwait(false);
             Log($"Initializing raid for {raidBossString}.");
+            await Click(A, 5_000 + Hub.Config.Timings.ExtraTimeLoadRaid, token).ConfigureAwait(false);
 
             if (code >= 0)
             {
-                // Set Link code
-                await Click(DLEFT, 0_100, token).ConfigureAwait(false); // Useless button press to kickstart dropped buttons due to async weirdness?
+                Log($"Entering Link Code...");
                 await Click(PLUS, 1_000, token).ConfigureAwait(false);
                 await EnterLinkCode(code, Hub.Config, token).ConfigureAwait(false);
                 await Click(PLUS, 2_000, token).ConfigureAwait(false);
@@ -847,6 +838,7 @@ namespace SysBot.Pokemon
 
         private async Task ClearWatts(CancellationToken token)
         {
+            Log("Collecting watts...");
             for (int i = 0; i < 2; i++)
                 await Click(A, 1_000 + Hub.Config.Timings.ExtraTimeAButtonClickAR, token).ConfigureAwait(false);
             await Click(A, 2_000 + Hub.Config.Timings.ExtraTimeLoadLobbyAR, token).ConfigureAwait(false);
