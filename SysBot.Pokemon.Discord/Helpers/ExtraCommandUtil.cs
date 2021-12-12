@@ -56,9 +56,9 @@ namespace SysBot.Pokemon.Discord
                 else ReactMessageDict.Add(ctx.User.Id, new() { Embed = embed, Pages = pageContent, MessageID = msg.Id, EntryTime = DateTime.Now });
 
                 IEmote[] reactions = { new Emoji("⬅️"), new Emoji("➡️"), new Emoji("⬆️"), new Emoji("⬇️") };
-                _ = Task.Run(() => msg.AddReactionsAsync(reactions).ConfigureAwait(false));
+                _ = Task.Run(async () => await msg.AddReactionsAsync(reactions).ConfigureAwait(false));
                 if (!DictWipeRunning)
-                    _ = Task.Run(() => DictWipeMonitor().ConfigureAwait(false));
+                    _ = Task.Run(async () => await DictWipeMonitor().ConfigureAwait(false));
             }
         }
 
@@ -104,7 +104,8 @@ namespace SysBot.Pokemon.Discord
 
         public static async Task HandleReactionAsync(Cacheable<IUserMessage, ulong> cachedMsg, ISocketMessageChannel _, SocketReaction reaction)
         {
-            if (!TradeCordHelper<T>.TCInitialized || !reaction.User.IsSpecified)
+            bool hasEmbed = cachedMsg.HasValue && cachedMsg.Value.Embeds.Count > 0;
+            if (!reaction.User.IsSpecified || !hasEmbed || (!TradeCordHelper<T>.TCInitialized && !cachedMsg.Value.Embeds.First().Fields[0].Name.Contains("Giveaway Pool")))
                 return;
 
             var user = reaction.User.Value;
