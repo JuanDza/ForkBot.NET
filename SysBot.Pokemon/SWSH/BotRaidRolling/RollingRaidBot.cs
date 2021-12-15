@@ -698,14 +698,10 @@ namespace SysBot.Pokemon
             await Click(DRIGHT, 0_150, token).ConfigureAwait(false);
             await Click(A, 1_250, token).ConfigureAwait(false); // Enter settings
 
-            if (Config.Connection.Protocol == SwitchProtocol.WiFi) // Scroll to system settings
-                await PressAndHold(DDOWN, 2_000, 0_250, token).ConfigureAwait(false);
-            else await HoldUSB(DDOWN, 2_000, 0_250, token).ConfigureAwait(false);
+            await PressAndHold(DDOWN, 2_000, 0_250, token).ConfigureAwait(false); // Scroll to system settings
             await Click(A, 1_250, token).ConfigureAwait(false);
 
-            if (Config.Connection.Protocol == SwitchProtocol.WiFi) // Scroll to date/time settings
-                await PressAndHold(DDOWN, 0_750, 0_250, token).ConfigureAwait(false);
-            else await HoldUSB(DDOWN, 0_750, 0_250, token).ConfigureAwait(false);
+            await PressAndHold(DDOWN, 0_750, 0_250, token).ConfigureAwait(false); // Scroll to date/time settings
             await Click(DDOWN, 0_150, token).ConfigureAwait(false);
 
             await Click(A, 1_250, token).ConfigureAwait(false);

@@ -321,7 +321,7 @@ namespace SysBot.Pokemon
 
         public async Task ToggleAirplane(int delay, CancellationToken token)
         {
-            await HoldUSB(HOME, 2_000, 1_000, token).ConfigureAwait(false);
+            await PressAndHold(HOME, 2_000, 1_000, token).ConfigureAwait(false);
             for (int i = 0; i < 4; i++)
                 await Click(DDOWN, i == 3 ? delay : 0_150, token).ConfigureAwait(false);
             await Click(A, 2_000, token).ConfigureAwait(false);
