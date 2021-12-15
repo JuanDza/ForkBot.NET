@@ -41,7 +41,7 @@ namespace SysBot.Pokemon
                 }
                 else
                 {
-                    TradeExtensions.EncounterLogs(pk, "EncounterLogPretty_SoJ.txt");
+                    TradeExtensions<PK8>.EncounterLogs(pk, "EncounterLogPretty_SoJ.txt");
                     if (await HandleEncounter(pk, token).ConfigureAwait(false))
                         return;
                 }

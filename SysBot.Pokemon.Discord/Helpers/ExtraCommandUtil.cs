@@ -27,7 +27,7 @@ namespace SysBot.Pokemon.Discord
         {
             List<string> pageContent = ListUtilPrep(entry);
             bool canReact = ctx.Guild.CurrentUser.GetPermissions(ctx.Channel as IGuildChannel).AddReactions;
-            var embed = new EmbedBuilder { Color = Color.DarkBlue }.AddField(x =>
+            var embed = new EmbedBuilder { Color = GetBorderColor(false) }.AddField(x =>
             {
                 x.Name = nameMsg;
                 x.Value = pageContent[0];
@@ -199,7 +199,6 @@ namespace SysBot.Pokemon.Discord
                 }
             }
             await msg.AddReactionAsync(new Emoji("❌")).ConfigureAwait(false);
-            TradeCordHelperUtil<T>.MuteList.Add(ctx.User.Id);
             return true;
         }
 
@@ -244,7 +243,7 @@ namespace SysBot.Pokemon.Discord
         public async Task EmbedUtil(SocketCommandContext ctx, string name, string value, EmbedBuilder? embed = null)
         {
             if (embed == null)
-                embed = new EmbedBuilder { Color = Color.DarkBlue };
+                embed = new EmbedBuilder { Color = GetBorderColor(false) };
 
             var splitName = name.Split(new string[] { "&^&" }, StringSplitOptions.None);
             var splitValue = value.Split(new string[] { "&^&" }, StringSplitOptions.None);
@@ -302,6 +301,20 @@ namespace SysBot.Pokemon.Discord
             }
             else pageContent.Add(entry == "" ? emptyList : entry);
             return pageContent;
+        }
+
+        public Color GetBorderColor(bool gift, PKM? pkm = null)
+        {
+            bool swsh = typeof(T) == typeof(PK8);
+            if (pkm is null && swsh)
+                return gift ? Color.Purple : Color.Blue;
+            else if (pkm is null && !swsh)
+                return gift ? Color.DarkPurple : Color.DarkBlue;
+            else if (pkm is not null && swsh)
+                return (pkm.IsShiny && pkm.FatefulEncounter) || pkm.ShinyXor == 0 ? Color.Gold : pkm.IsShiny ? Color.LightOrange : Color.Teal;
+            else if (pkm is not null && !swsh)
+                return (pkm.IsShiny && pkm.FatefulEncounter) || pkm.ShinyXor == 0 ? Color.Gold : pkm.IsShiny ? Color.DarkOrange : Color.DarkTeal;
+            throw new NotImplementedException();
         }
     }
 }

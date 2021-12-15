@@ -9,7 +9,7 @@ using PKHeX.Core.AutoMod;
 
 namespace SysBot.Pokemon
 {
-    public class TradeExtensions
+    public class TradeExtensions<T> where T : PKM, new()
     {
         private static readonly object _syncLog = new();
         public static bool CoordinatesSet = false;
@@ -27,9 +27,49 @@ namespace SysBot.Pokemon
             "Somewhat vain",
         };
 
-        public static T EnumParse<T>(string input) where T : struct, Enum => !Enum.TryParse(input, true, out T result) ? new() : result;
+        public static readonly int[] Amped = { 3, 4, 2, 8, 9, 19, 22, 11, 13, 14, 0, 6, 24 };
+        public static readonly int[] LowKey = { 1, 5, 7, 10, 12, 15, 16, 17, 18, 20, 21, 23 };
+        public static readonly int[] ShinyLock = {  (int)Species.Victini, (int)Species.Keldeo, (int)Species.Volcanion, (int)Species.Cosmog, (int)Species.Cosmoem, (int)Species.Magearna, (int)Species.Marshadow, (int)Species.Eternatus,
+                                                    (int)Species.Kubfu, (int)Species.Urshifu, (int)Species.Zarude, (int)Species.Glastrier, (int)Species.Spectrier, (int)Species.Calyrex };
 
-        public static bool HasAdName<T>(T pk, out string ad) where T : PKM, new()
+        public static bool ShinyLockCheck(int species, string form, string ball = "")
+        {
+            if (ShinyLock.Contains(species))
+                return true;
+            else if (form != "" && (species is (int)Species.Zapdos or (int)Species.Moltres or (int)Species.Articuno))
+                return true;
+            else if (ball.Contains("Beast") && (species is (int)Species.Poipole or (int)Species.Naganadel))
+                return true;
+            else if (typeof(T) == typeof(PB8) && (species is (int)Species.Manaphy or (int)Species.Mew or (int)Species.Jirachi))
+                return true;
+            else if (species is (int)Species.Pikachu && form != "" && form != "-Partner")
+                return true;
+            else if (species is (int)Species.Zacian or (int)Species.Zamazenta && !ball.Contains("Cherish") && ball != "")
+                return true;
+            else return false;
+        }
+
+        public static Ball[] GetLegalBalls(string showdownText)
+        {
+            Ball[] bdspBalls = { Ball.Master, Ball.Ultra, Ball.Great, Ball.Poke, Ball.Safari, Ball.Net, Ball.Dive, Ball.Nest, Ball.Repeat, Ball.Timer, Ball.Luxury, Ball.Premier, Ball.Dusk, Ball.Heal, Ball.Quick, Ball.Fast, Ball.Level, Ball.Lure, Ball.Heavy, Ball.Love, Ball.Friend, Ball.Moon };
+            Ball[] balls = typeof(T) == typeof(PK8) ? (Ball[])Enum.GetValues(typeof(Ball)) : bdspBalls;
+
+            List<Ball> legalBalls = new();
+            for (int i = 0; i < balls.Length; i++)
+            {
+                var tempSet = new ShowdownSet($"{showdownText}\nBall: {balls[i]}");
+                var tempTempl = AutoLegalityWrapper.GetTemplate(tempSet);
+                var tempSav = AutoLegalityWrapper.GetTrainerInfo<T>();
+                _ = (T)tempSav.GetLegal(tempTempl, out string res);
+                if (res == "Regenerated")
+                    legalBalls.Add(balls[i]);
+            }
+            return legalBalls.ToArray();
+        }
+
+        public static A EnumParse<A>(string input) where A : struct, Enum => !Enum.TryParse(input, true, out A result) ? new() : result;
+
+        public static bool HasAdName(T pk, out string ad)
         {
             string pattern = @"(YT$)|(YT\w*$)|(Lab$)|(\.\w*$)|(TV$)|(PKHeX)|(FB:)|(AuSLove)|(ShinyMart)|(Blainette)|(\ com)|(\ org)|(\ net)|(2DOS3)|(PPorg)|(Tik\wok$)|(YouTube)|(IG:)|(TTV\ )|(Tools)|(JokersWrath)|(bot$)|(PKMGen)";
             bool ot = Regex.IsMatch(pk.OT_Name, pattern, RegexOptions.IgnoreCase);
@@ -38,14 +78,13 @@ namespace SysBot.Pokemon
             return ot || nick;
         }
 
-        public static void DittoTrade<T>(T pkm) where T : PKM, new()
+        public static void DittoTrade(PKM pkm)
         {
-            bool bdsp = pkm is PB8;
             var dittoStats = new string[] { "atk", "spe", "spa" };
             var nickname = pkm.Nickname.ToLower();
             pkm.StatNature = pkm.Nature;
-            pkm.Met_Location = !bdsp ? 162 : 400;
-            if (bdsp)
+            pkm.Met_Location = pkm is not PB8 ? 162 : 400;
+            if (pkm is PB8)
                 pkm.Met_Level = 29;
 
             pkm.Ball = 21;
@@ -54,9 +93,8 @@ namespace SysBot.Pokemon
             TrashBytes(pkm, new LegalityAnalysis(pkm));
         }
 
-        public static void EggTrade<T>(T pk) where T : PKM, new()
+        public static void EggTrade(PKM pk)
         {
-            bool bdsp = pk is PB8;
             pk.IsNicknamed = true;
             pk.Nickname = pk.Language switch
             {
@@ -71,14 +109,14 @@ namespace SysBot.Pokemon
             };
 
             pk.IsEgg = true;
-            pk.Egg_Location = !bdsp ? 60002 : 60010;
+            pk.Egg_Location = pk is PK8 ? 60002 : 60010;
             pk.MetDate = DateTime.Parse("2020/10/20");
             pk.EggMetDate = pk.MetDate;
             pk.HeldItem = 0;
             pk.CurrentLevel = 1;
             pk.EXP = 0;
             pk.Met_Level = 1;
-            pk.Met_Location = !bdsp ? 30002 : 65535;
+            pk.Met_Location = pk is PK8 ? 30002 : 65535;
             pk.CurrentHandler = 0;
             pk.OT_Friendship = 1;
             pk.HT_Name = "";
@@ -121,7 +159,7 @@ namespace SysBot.Pokemon
             pk.SetSuggestedRibbons(la.EncounterMatch);
         }
 
-        public static void EncounterLogs<T>(T pk, string filepath = "") where T : PKM, new()
+        public static void EncounterLogs(PKM pk, string filepath = "")
         {
             if (filepath == "")
                 filepath = "EncounterLogPretty.txt";
@@ -145,7 +183,7 @@ namespace SysBot.Pokemon
                 int squareTotal = int.Parse(splitTotal[3].Split(' ')[1]) + (pk.IsShiny && pk.ShinyXor == 0 ? 1 : 0);
                 int markTotal = int.Parse(splitTotal[4].Split(' ')[1]) + (mark ? 1 : 0);
 
-                var form = TradeCordHelperUtil<T>.FormOutput(pk.Species, pk.Form, out _);
+                var form = FormOutput(pk.Species, pk.Form, out _);
                 var speciesName = $"{SpeciesName.GetSpeciesNameGeneration(pk.Species, pk.Language, 8)}{form}".Replace(" ", "");
                 var index = content.FindIndex(x => x.Split(':')[0].Equals(speciesName));
 
@@ -188,14 +226,14 @@ namespace SysBot.Pokemon
             return replace.Aggregate(content, (old, cleaned) => old.Replace(cleaned.Key, cleaned.Value)).Split(' ');
         }
 
-        public static T TrashBytes<T>(T pkm, LegalityAnalysis? la = null) where T : PKM, new()
+        public static PKM TrashBytes(PKM pkm, LegalityAnalysis? la = null)
         {
-            T pkMet = (T)pkm.Clone();
+            var pkMet = (T)pkm.Clone();
             if (pkMet.Version != (int)GameVersion.GO)
                 pkMet.MetDate = DateTime.Parse("2020/10/20");
 
             var analysis = new LegalityAnalysis(pkMet);
-            T pkTrash = (T)pkMet.Clone();
+            var pkTrash = (T)pkMet.Clone();
             if (analysis.Valid)
             {
                 pkTrash.IsNicknamed = true;
@@ -210,7 +248,7 @@ namespace SysBot.Pokemon
             return pkm;
         }
 
-        public static T CherishHandler<T>(MysteryGift mg, ITrainerInfo info, int format) where T : PKM, new()
+        public static T CherishHandler(MysteryGift mg, ITrainerInfo info, int format)
         {
             var mgPkm = mg.ConvertToPKM(info);
             mgPkm = PKMConverter.IsConvertibleToFormat(mgPkm, format) ? PKMConverter.ConvertToType(mgPkm, typeof(T), out _) : mgPkm;
@@ -251,8 +289,8 @@ namespace SysBot.Pokemon
             bool fd = false;
             string[] baseLink;
             if (fullSize)
-                baseLink = "https://projectpokemon.org/images/sprites-models/homeimg/poke_capture_0001_000_mf_n_00000000_f_n.png".Split('_');
-            else baseLink = "https://raw.githubusercontent.com/BakaKaito/HomeImages/main/homeimg/128x128/poke_capture_0001_000_mf_n_00000000_f_n.png".Split('_');
+                baseLink = "https://raw.githubusercontent.com/Koi-3088/HomeImages/master/512x512/poke_capture_0001_000_mf_n_00000000_f_n.png".Split('_');
+            else baseLink = "https://raw.githubusercontent.com/Koi-3088/HomeImages/master/128x128/poke_capture_0001_000_mf_n_00000000_f_n.png".Split('_');
 
             if (Enum.IsDefined(typeof(GenderDependent), pkm.Species) && !canGmax && pkm.Form == 0)
             {
@@ -268,6 +306,19 @@ namespace SysBot.Pokemon
             baseLink[6] = "0000000" + (pkm.Species == (int)Species.Alcremie ? pkm.Data[0xE4] : 0);
             baseLink[8] = pkm.IsShiny ? "r.png" : "n.png";
             return string.Join("_", baseLink);
+        }
+
+        public static string FormOutput(int species, int form, out string[] formString)
+        {
+            var strings = GameInfo.GetStrings(LanguageID.English.GetLanguage2CharName());
+            var list = FormConverter.GetFormList(species, strings.Types, strings.forms, GameInfo.GenderSymbolASCII, typeof(T) == typeof(PK8) ? 8 : 4).ToList();
+            list[0] = "";
+            list.RemoveAll(x => x.Contains("Mega"));
+            formString = list.ToArray();
+
+            if (form >= formString.Length)
+                form = formString.Length - 1;
+            return formString[form].Contains("-") ? formString[form] : formString[form] == "" ? "" : $"-{formString[form]}";
         }
     }
 }

@@ -167,11 +167,11 @@ namespace SysBot.Pokemon
 #pragma warning restore CS8601 // Possible null reference assignment.
 
                 LairEncounterCount++;
-                Log($"Raid Battle {raidCount}. Encounter {LairEncounterCount}: {SpeciesName.GetSpeciesNameGeneration(lairPk.Species, 2, 8)}{TradeCordHelperUtil<PK8>.FormOutput(lairPk.Species, lairPk.Form, out _)}.");
+                Log($"Raid Battle {raidCount}. Encounter {LairEncounterCount}: {SpeciesName.GetSpeciesNameGeneration(lairPk.Species, 2, 8)}{TradeExtensions<PK8>.FormOutput(lairPk.Species, lairPk.Form, out _)}.");
                 if (PlayerPk == null)
                     PlayerPk = new();
 
-                Log($"Sending out: {SpeciesName.GetSpeciesNameGeneration(PlayerPk.Species, 2, 8)}{TradeCordHelperUtil<PK8>.FormOutput(PlayerPk.Species, PlayerPk.Form, out _)}.");
+                Log($"Sending out: {SpeciesName.GetSpeciesNameGeneration(PlayerPk.Species, 2, 8)}{TradeExtensions<PK8>.FormOutput(PlayerPk.Species, PlayerPk.Form, out _)}.");
                 await BattleRoutine(party, lairPk, token).ConfigureAwait(false);
 
                 if (raidCount == 4 || Lost)
@@ -248,7 +248,7 @@ namespace SysBot.Pokemon
 
             var speedIndex = speedStat.Count > 0 ? speedStat.IndexOf(speedStat.Max()) : 0;
             var selection = pkList[monIndex == -1 ? speedIndex : monIndex];
-            Log($"Selecting {SpeciesName.GetSpeciesNameGeneration(selection.Species, 2, 8)}{TradeCordHelperUtil<PK8>.FormOutput(selection.Species, selection.Form, out _)}.");
+            Log($"Selecting {SpeciesName.GetSpeciesNameGeneration(selection.Species, 2, 8)}{TradeExtensions<PK8>.FormOutput(selection.Species, selection.Form, out _)}.");
             await MoveAndRentalClicks(monIndex == -1 ? speedIndex : monIndex, token).ConfigureAwait(false);
         }
 
@@ -451,7 +451,7 @@ namespace SysBot.Pokemon
                 await Click(A, 1_000, token).ConfigureAwait(false);
             }
 
-            Log($"{(raidCount == 4 || Settings.CatchLairPokémon || upgrade ? "Caught" : "Defeated")} {SpeciesName.GetSpeciesNameGeneration(lairPk.Species, 2, 8)}{TradeCordHelperUtil<PK8>.FormOutput(lairPk.Species, lairPk.Form, out _)}.");
+            Log($"{(raidCount == 4 || Settings.CatchLairPokémon || upgrade ? "Caught" : "Defeated")} {SpeciesName.GetSpeciesNameGeneration(lairPk.Species, 2, 8)}{TradeExtensions<PK8>.FormOutput(lairPk.Species, lairPk.Form, out _)}.");
         }
 
         private async Task Results(CancellationToken token)
@@ -484,7 +484,7 @@ namespace SysBot.Pokemon
                     if (caughtLegend && (Settings.UseStopConditionsPathReset && StopConditionSettings.EncounterFound(pk, DesiredMinIVs, DesiredMaxIVs, NewSCSettings, null) || Settings.StopOnLegendary))
                         StopBot = true;
 
-                    TradeExtensions.EncounterLogs(pk, "EncounterLogPretty_Lair.txt");
+                    TradeExtensions<PK8>.EncounterLogs(pk, "EncounterLogPretty_Lair.txt");
                     if (DumpSetting.Dump && !string.IsNullOrEmpty(DumpSetting.DumpFolder))
                         DumpPokemon(DumpSetting.DumpFolder, "lairs", pk);
 
@@ -555,7 +555,7 @@ namespace SysBot.Pokemon
             var originalSetting = NewSCSettings.ShinyTarget;
             NewSCSettings.ShinyTarget = TargetShinyType.DisableOption;
             Log("Reading legendary Pokémon offset...");
-            TradeExtensions.EncounterLogs(LairBoss);
+            TradeExtensions<PK8>.EncounterLogs(LairBoss);
             Log($"Reset {ResetCount} {Environment.NewLine}{ShowdownParsing.GetShowdownText(LairBoss)}{Environment.NewLine}");
 
             if (!StopConditionSettings.EncounterFound(LairBoss, DesiredMinIVs, DesiredMaxIVs, NewSCSettings, null))

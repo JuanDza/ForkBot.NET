@@ -198,8 +198,7 @@ namespace SysBot.Pokemon.Discord
             var template = AutoLegalityWrapper.GetTemplate(set);
             var sav = AutoLegalityWrapper.GetTrainerInfo<T>();
             var pkm = sav.GetLegal(template, out var result);
-            pkm = PKMConverter.ConvertToType(pkm, typeof(T), out _) ?? pkm;
-            TradeExtensions.DittoTrade((T)pkm);
+            TradeExtensions<T>.DittoTrade((T)pkm);
 
             var la = new LegalityAnalysis(pkm);
             if (Info.Hub.Config.Trade.Memes && await TrollAsync(Context, pkm is not T || !la.Valid, pkm).ConfigureAwait(false))
@@ -256,7 +255,7 @@ namespace SysBot.Pokemon.Discord
             string[] input = new string[] { species1, species2, species3 };
             for (int i = 0; i < input.Length; i++)
             {
-                var parse = TradeExtensions.EnumParse<LairSpecies>(input[i]);
+                var parse = TradeExtensions<T>.EnumParse<LairSpecies>(input[i]);
                 if (parse == default)
                 {
                     await ReplyAsync($"{input[i]} is not a valid Lair Species.").ConfigureAwait(false);
@@ -301,7 +300,7 @@ namespace SysBot.Pokemon.Discord
         [RequireSudo]
         public async Task SetLairBall([Summary("Sets the ball for catching Lair Pokémon.")] string ball)
         {
-            var parse = TradeExtensions.EnumParse<LairBall>(ball);
+            var parse = TradeExtensions<T>.EnumParse<LairBall>(ball);
             if (parse == default)
             {
                 await ReplyAsync("Not a valid ball. Correct format is, for example, \"$slb Love\".").ConfigureAwait(false);
@@ -352,7 +351,7 @@ namespace SysBot.Pokemon.Discord
             {
                 if (LairBotUtil.EmbedMon.Item1 != null)
                 {
-                    var url = TradeExtensions.PokeImg(LairBotUtil.EmbedMon.Item1, LairBotUtil.EmbedMon.Item1.CanGigantamax, false);
+                    var url = TradeExtensions<T>.PokeImg(LairBotUtil.EmbedMon.Item1, LairBotUtil.EmbedMon.Item1.CanGigantamax, false);
                     var ballStr = $"{(Ball)LairBotUtil.EmbedMon.Item1.Ball}".ToLower();
                     var ballUrl = $"https://serebii.net/itemdex/sprites/pgl/{ballStr}ball.png";
                     var author = new EmbedAuthorBuilder { IconUrl = ballUrl, Name = LairBotUtil.EmbedMon.Item2 ? "Legendary Caught!" : "Result found, but not quite Legendary!" };
@@ -424,7 +423,7 @@ namespace SysBot.Pokemon.Discord
                     lock (_lock)
                     {
                         var val = RollingRaidBot.EmbedInfo.Value;
-                        var url = TradeExtensions.PokeImg(val.Item1, val.Item1.CanGigantamax, false);
+                        var url = TradeExtensions<T>.PokeImg(val.Item1, val.Item1.CanGigantamax, false);
                         var embed = new EmbedBuilder { Color = Color.Blue, ThumbnailUrl = url }.WithDescription(val.Item2);
                         embed.Title = val.Item3;
                         embed.ImageUrl = $"attachment://{fn}";

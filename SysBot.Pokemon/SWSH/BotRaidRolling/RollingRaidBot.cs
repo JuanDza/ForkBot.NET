@@ -385,13 +385,13 @@ namespace SysBot.Pokemon
                     {
                         var la = new LegalityAnalysis(pk);
                         var shinySymbol = pk.IsShiny && (pk.ShinyXor == 0 || pk.FatefulEncounter) ? "■" : pk.IsShiny ? "★" : "";
-                        var form = TradeCordHelperUtil<PK8>.FormOutput(pk.Species, pk.Form, out _);
+                        var form = TradeExtensions<PK8>.FormOutput(pk.Species, pk.Form, out _);
                         var speciesForm = SpeciesName.GetSpeciesNameGeneration(pk.Species, 2, 8) + form;
                         var genderStr = $"{(pk.Gender == 0 ? " (M)" : pk.Gender == 1 ? " (F)" : "")}";
                         var nick = $"{(pk.IsNicknamed ? $" named {pk.Nickname}" : "")}";
                         string laMsg = !la.Valid ? $"\nHere's what's wrong with it!\n```{la.Report()}```" : "";
 
-                        bool isAd = TradeExtensions.HasAdName(pk, out string ad);
+                        bool isAd = TradeExtensions<PK8>.HasAdName(pk, out string ad);
                         string adMsg = isAd ? $" Ew, it has an ad-name ({ad})!" : "";
                         EchoUtil.Echo($"{LobbyPlayers[player].Name} (Player {player + 1}) joined the lobby with{(!la.Valid ? " their madd hacc" : "")} {shinySymbol}{speciesForm}{genderStr}{nick}!{adMsg}{laMsg}");
                     }
@@ -417,7 +417,7 @@ namespace SysBot.Pokemon
                 var dexno = BitConverter.ToUInt16(data, 0);
 
                 data = await Connection.ReadBytesAsync(ofs + RaidAltFormInc, 1, token).ConfigureAwait(false);
-                var altformstr = data[0] == 0 ? "" : TradeCordHelperUtil<PK8>.FormOutput(dexno, data[0], out _);
+                var altformstr = data[0] == 0 ? "" : TradeExtensions<PK8>.FormOutput(dexno, data[0], out _);
 
                 data = await Connection.ReadBytesAsync(ofs + RaidShinyIncr, 1, token).ConfigureAwait(false);
                 var shiny = data[0] == 1 ? "★" : "";
@@ -754,7 +754,7 @@ namespace SysBot.Pokemon
             var speciesStr = SpeciesName.GetSpeciesNameGeneration((int)species, 2, 8);
 
             var form = isEvent ? RaidInfo.RaidDistributionEncounter.AltForm : RaidInfo.RaidEncounter.AltForm;
-            var formStr = TradeCordHelperUtil<PK8>.FormOutput((int)species, (int)form, out _);
+            var formStr = TradeExtensions<PK8>.FormOutput((int)species, (int)form, out _);
             bool gmax = Settings.GmaxLock && (isEvent ? RaidInfo.RaidDistributionEncounter.IsGigantamax : RaidInfo.RaidEncounter.IsGigantamax);
 
             var flawless = (uint)(isEvent ? RaidInfo.RaidDistributionEncounter.FlawlessIVs : RaidInfo.RaidEncounter.FlawlessIVs);

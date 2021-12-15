@@ -251,7 +251,7 @@ namespace SysBot.Pokemon
         {
             nature = species switch
             {
-                849 => altform == 0 ? (uint)TradeCordHelperUtil<PK8>.Amped[rng.NextInt(13)] : (uint)TradeCordHelperUtil<PK8>.LowKey[rng.NextInt(12)],
+                849 => altform == 0 ? (uint)TradeExtensions<PK8>.Amped[rng.NextInt(13)] : (uint)TradeExtensions<PK8>.LowKey[rng.NextInt(12)],
                 _ => (uint)rng.NextInt(25),
             };
         }

@@ -1044,7 +1044,7 @@ namespace SysBot.Pokemon
             if (Hub.Config.Discord.ReturnPKMs)
                 poke.SendNotification(this, offered, "Here's what you showed me!");
 
-            var adOT = TradeExtensions.HasAdName(offered, out _);
+            var adOT = TradeExtensions<PK8>.HasAdName(offered, out _);
             var laInit = new LegalityAnalysis(offered);
             if (!adOT && laInit.Valid)
             {
@@ -1056,14 +1056,13 @@ namespace SysBot.Pokemon
             if (Hub.Config.Legality.ResetHOMETracker)
                 clone.Tracker = 0;
 
-            var ball = TradeCordHelperUtil<PK8>.Pokeball.Contains(offered.Species) ? "\nBall: Poke" : $"\nBall: {(Ball)offered.Ball}";
             string shiny = string.Empty;
-            if (!TradeCordHelperUtil<PK8>.ShinyLockCheck(offered.Species, ball, offered.Form > 0))
+            if (!TradeExtensions<PK8>.ShinyLockCheck(offered.Species, TradeExtensions<PK8>.FormOutput(offered.Species, offered.Form, out _), $"{(Ball)offered.Ball}"))
                 shiny = $"\nShiny: {(offered.ShinyXor == 0 ? "Square" : offered.IsShiny ? "Star" : "No")}";
             else shiny = "\nShiny: No";
 
             var name = partner.TrainerName;
-            var extraInfo = $"OT: {name}{ball}{shiny}";
+            var extraInfo = $"OT: {name}{(Ball)offered.Ball}{shiny}";
             var set = ShowdownParsing.GetShowdownText(offered).Split('\n').ToList();
             set.Remove(set.Find(x => x.Contains("Shiny")));
             set.InsertRange(1, extraInfo.Split('\n'));
@@ -1084,12 +1083,12 @@ namespace SysBot.Pokemon
                 var info = new SimpleTrainerInfo { Gender = clone.OT_Gender, Language = clone.Language, OT = name, TID = clone.TID, SID = clone.SID };
                 var mg = EncounterEvent.GetAllEvents().Where(x => x.Species == clone.Species && x.Form == clone.Form && x.IsShiny == clone.IsShiny && x.OT_Name == clone.OT_Name).ToList();
                 if (mg.Count > 0)
-                    clone = TradeExtensions.CherishHandler<PK8>(mg.First(), info, clone.Format);
+                    clone = TradeExtensions<PK8>.CherishHandler(mg.First(), info, clone.Format);
                 else clone = (PK8)sav.GetLegal(AutoLegalityWrapper.GetTemplate(new ShowdownSet(string.Join("\n", set))), out _);
             }
             else clone = (PK8)sav.GetLegal(AutoLegalityWrapper.GetTemplate(new ShowdownSet(string.Join("\n", set))), out _);
 
-            clone = TradeExtensions.TrashBytes(clone, new LegalityAnalysis(clone));
+            clone = (PK8)TradeExtensions<PK8>.TrashBytes(clone, new LegalityAnalysis(clone));
             clone.ResetPartyStats();
             var la = new LegalityAnalysis(clone);
             if (!la.Valid)

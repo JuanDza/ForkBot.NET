@@ -14,7 +14,7 @@ namespace SysBot.Pokemon.Discord
     {
         private static TradeQueueInfo<T> Info => SysCord<T>.Runner.Hub.Queues.Info;
         private readonly PokeTradeHub<T> Hub = SysCord<T>.Runner.Hub;
-        private readonly ExtraCommandUtil<T> Util = new();
+        private readonly ExtraCommandUtil<T> Util = new();     
         private readonly TradeCordHelper<T> Helper = new(SysCord<T>.Runner.Hub.Config.TradeCord);
 
         [Command("TradeCordList")]
@@ -40,6 +40,7 @@ namespace SysBot.Pokemon.Discord
         [RequireQueueRole(nameof(DiscordManager.RolesTradeCord))]
         public async Task EventVote()
         {
+            bool bdsp = typeof(T) == typeof(PB8);
             DateTime.TryParse(Info.Hub.Config.TradeCord.EventEnd, out DateTime endTime);
             bool ended = (Hub.Config.TradeCord.EnableEvent && endTime != default && DateTime.Now > endTime) || !Hub.Config.TradeCord.EnableEvent;
             if (!ended)
@@ -57,14 +58,14 @@ namespace SysBot.Pokemon.Discord
                 return;
             }
 
-            var timeRemaining = TradeCordHelperUtil<T>.EventVoteTimer - DateTime.Now;
+            var timeRemaining = TradeCordHelper<T>.EventVoteTimer - DateTime.Now;
             if (timeRemaining.TotalSeconds > 0)
             {
                 await ReplyAsync($"Please try again in about {(timeRemaining.Hours > 1 ? $"{timeRemaining.Hours} hours and " : timeRemaining.Hours > 0 ? $"{timeRemaining.Hours} hour and " : "")}{(timeRemaining.Minutes < 2 ? "1 minute" : $"{timeRemaining.Minutes} minutes")}");
                 return;
             }
 
-            TradeCordHelperUtil<T>.EventVoteTimer = DateTime.Now.AddMinutes(Hub.Config.TradeCord.TradeCordEventCooldown + Hub.Config.TradeCord.TradeCordEventDuration);
+            TradeCordHelper<T>.EventVoteTimer = DateTime.Now.AddMinutes(Hub.Config.TradeCord.TradeCordEventCooldown + Hub.Config.TradeCord.TradeCordEventDuration);
             List<PokeEventType> events = new();
             PokeEventType[] vals = (PokeEventType[])Enum.GetValues(typeof(PokeEventType));
             while (events.Count < 5)
@@ -72,15 +73,47 @@ namespace SysBot.Pokemon.Discord
                 var rng = new Random();
                 var legends = rng.Next(101);
                 var rand = vals[rng.Next(vals.Length)];
-                if (rand == PokeEventType.Legends && legends < 55)
+                if ((rand == PokeEventType.Legends && (legends < 55 || bdsp)) || (rand == PokeEventType.EventPoke && bdsp))
                     continue;
 
                 if (!events.Contains(rand))
                     events.Add(rand);
             }
 
+            var ctx = new TradeCordHelper<T>.TC_CommandContext { Username = Context.User.Username, ID = Context.User.Id, Context = TCCommandContext.EventVote };
+            var result = Helper.ProcessTradeCord(ctx, new string[] { });
+
             var t = Task.Run(async () => await Util.EventVoteCalc(Context, events).ConfigureAwait(false));
             var index = t.Result;
+            if (result.UsersToPing != null && result.UsersToPing.Length > 0)
+            {
+                var users = Context.Guild.Users.ToArray();
+                var embed = new EmbedBuilder()
+                {
+                    Color = Util.GetBorderColor(false),
+                    Title = "TradeCord Event Notification",
+                    Description = $"{events[index]} event is about to begin in {Context.Guild.Name}'s \"#{Context.Channel.Name}\" channel!",
+                    Timestamp = DateTime.Now,
+                };
+
+                for (int i = 0; i < result.UsersToPing.Length; i++)
+                {
+                    var id = result.UsersToPing[i];
+                    var user = users.FirstOrDefault(x => x.Id == id);
+                    if (user != null && !user.IsWebhook && !user.IsBot)
+                    {
+                        try
+                        {
+                            await UserExtensions.SendMessageAsync(user, "", false, embed : embed.Build()).ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            await ReplyAsync($"<@!{id}>, I can't notify you via DM if you have DMs disabled!");
+                        }
+                    }
+                }
+            }
+
             Hub.Config.TradeCord.PokeEventType = events[index];
             Hub.Config.TradeCord.EnableEvent = true;
             Hub.Config.TradeCord.EventEnd = DateTime.Now.AddMinutes(Hub.Config.TradeCord.TradeCordEventDuration).ToString();
@@ -110,16 +143,19 @@ namespace SysBot.Pokemon.Discord
 
             if (Info.Hub.Config.TradeCord.TradeCordCooldown > 0)
             {
-                if (TradeCordHelperUtil<T>.UserCommandTimestamps.ContainsKey(id))
-                    TradeCordHelperUtil<T>.UserCommandTimestamps[id].Add(DateTime.UtcNow);
-                else TradeCordHelperUtil<T>.UserCommandTimestamps.Add(id, new List<DateTime> { DateTime.UtcNow });
+                if (TradeCordHelper<T>.UserCommandTimestamps.ContainsKey(id))
+                    TradeCordHelper<T>.UserCommandTimestamps[id].Add(DateTime.UtcNow);
+                else TradeCordHelper<T>.UserCommandTimestamps.Add(id, new List<DateTime> { DateTime.UtcNow });
 
-                var count = TradeCordHelperUtil<T>.UserCommandTimestamps[id].Count;
-                if (count >= 15 && TradeCordHelperUtil<T>.SelfBotScanner(id, Hub.Config.TradeCord.TradeCordCooldown))
+                var count = TradeCordHelper<T>.UserCommandTimestamps[id].Count;
+                if (count >= 15 && TradeCordHelper<T>.SelfBotScanner(id, Hub.Config.TradeCord.TradeCordCooldown))
                 {
                     var t = Task.Run(async () => await Util.ReactionVerification(Context).ConfigureAwait(false));
                     if (t.Result)
+                    {
+                        TradeCordHelper<T>.MuteList.Add(Context.User.Id);
                         return;
+                    }
                 }
             }
 
@@ -156,14 +192,13 @@ namespace SysBot.Pokemon.Discord
                 var imgRng = rng.Next(5);
                 string[] sketchyCatches = { "https://i.imgur.com/BOb6IbW.png", "https://i.imgur.com/oSUQhYv.png", "https://i.imgur.com/81hlmGV.png", "https://i.imgur.com/7LBHLmf.png", "https://i.imgur.com/NEWEVtm.png" };
                 var ball = (Ball)rng.Next(2, 26);
-                var enumVals = (int[])Enum.GetValues(typeof(Gen8Dex));
-                var speciesRand = enumVals[rng.Next(enumVals.Length)];
+                var speciesRand = TradeCordHelper<T>.Dex[rng.Next(TradeCordHelper<T>.Dex.Length)];
                 var descF = $"You threw {(ball == Ball.Ultra ? "an" : "a")} {ball} Ball at a wild {(spookyRng >= 90 ? "...whatever that thing is" : SpeciesName.GetSpeciesNameGeneration(speciesRand, 2, 8))}...";
                 msg = $"{(spookyRng >= 90 ? "One wiggle... Two... It breaks free and stares at you, smiling. You run for dear life." : "...but it managed to escape!")}";
 
                 if (spookyRng >= 90 && result.Item != string.Empty)
                 {
-                    bool article = TradeCordHelperUtil<T>.ArticleChoice(result.Item[0]);
+                    bool article = TradeCordHelper<T>.ArticleChoice(result.Item[0]);
                     msg += $"&^&\nAs you were running for your life, you tripped on {(article ? "an" : "a")} {result.Item}!";
                 }
                 else msg += result.Message;
@@ -172,7 +207,7 @@ namespace SysBot.Pokemon.Discord
                 var footerF = new EmbedFooterBuilder { Text = $"{(spookyRng >= 90 ? $"But deep inside you know there is no escape... {(result.EggPokeID != 0 ? $"Egg ID {result.EggPokeID}" : "")}" : result.EggPokeID != 0 ? $"Egg ID {result.EggPokeID}" : "")}" };
                 var embedF = new EmbedBuilder
                 {
-                    Color = Color.Teal,
+                    Color = Util.GetBorderColor(false, result.EggPokeID != 0 ? result.EggPoke : null),
                     ImageUrl = spookyRng >= 90 ? sketchyCatches[imgRng] : "",
                     Description = descF,
                     Author = authorF,
@@ -191,9 +226,9 @@ namespace SysBot.Pokemon.Discord
                 speciesName = speciesName.Remove(speciesName.Length - 1);
             }
 
-            var form = nidoranGender != string.Empty ? nidoranGender : TradeCordHelperUtil<T>.FormOutput(result.Poke.Species, result.Poke.Form, out _);
+            var form = nidoranGender != string.Empty ? nidoranGender : TradeExtensions<T>.FormOutput(result.Poke.Species, result.Poke.Form, out _);
             var finalName = speciesName + form;
-            var pokeImg = TradeExtensions.PokeImg(result.Poke, result.Poke is PK8 pk8 && pk8.CanGigantamax, Hub.Config.TradeCord.UseFullSizeImages);
+            var pokeImg = TradeExtensions<T>.PokeImg(result.Poke, result.Poke is PK8 pk8 && pk8.CanGigantamax, Hub.Config.TradeCord.UseFullSizeImages);
             var ballImg = $"https://raw.githubusercontent.com/BakaKaito/HomeImages/main/Ballimg/50x50/{((Ball)result.Poke.Ball).ToString().ToLower()}ball.png";
             var desc = $"You threw {(result.Poke.Ball == 2 ? "an" : "a")} {(Ball)result.Poke.Ball} Ball at a {(result.Poke.IsShiny ? $"**shiny** wild **{finalName}**" : $"wild {finalName}")}...";
 
@@ -201,12 +236,12 @@ namespace SysBot.Pokemon.Discord
             var footer = new EmbedFooterBuilder
             {
                 Text = $"Catch {result.User.UserInfo.CatchCount} | Pokémon ID {result.PokeID}{(result.EggPokeID == 0 ? "" : $" | Egg ID {result.EggPokeID}")}",
-                IconUrl = TradeCordHelperUtil<T>.TimeOfDayString(result.User.UserInfo.TimeZoneOffset),
+                IconUrl = TradeCordHelper<T>.TimeOfDayString(result.User.UserInfo.TimeZoneOffset),
             };
 
             var embed = new EmbedBuilder
             {
-                Color = (result.Poke.IsShiny && result.Poke.FatefulEncounter) || result.Poke.ShinyXor == 0 ? Color.Gold : result.Poke.IsShiny ? Color.LightOrange : Color.Teal,
+                Color = Util.GetBorderColor(false, result.Poke),
                 ImageUrl = pokeImg,
                 Description = desc,
                 Author = author,
@@ -306,10 +341,10 @@ namespace SysBot.Pokemon.Discord
             }
 
             bool canGmax = new ShowdownSet(ShowdownParsing.GetShowdownText(result.Poke)).CanGigantamax;
-            var pokeImg = TradeExtensions.PokeImg(result.Poke, canGmax, Hub.Config.TradeCord.UseFullSizeImages);
+            var pokeImg = TradeExtensions<T>.PokeImg(result.Poke, canGmax, Hub.Config.TradeCord.UseFullSizeImages);
             string flavorText = $"\n\n{Helper.GetDexFlavorText(result.Poke.Species, result.Poke.Form, canGmax)}";
 
-            var embed = new EmbedBuilder { Color = result.Poke.IsShiny ? Color.Blue : Color.DarkBlue, ThumbnailUrl = pokeImg }.WithFooter(x => { x.Text = flavorText; x.IconUrl = "https://i.imgur.com/nXNBrlr.png"; });
+            var embed = new EmbedBuilder { Color = Util.GetBorderColor(false, result.Poke), ThumbnailUrl = pokeImg }.WithFooter(x => { x.Text = flavorText; x.IconUrl = "https://i.imgur.com/nXNBrlr.png"; });
             msg = $"\n\n{ReusableActions.GetFormattedShowdownText(result.Poke)}";
 
             await Util.EmbedUtil(Context, result.EmbedName, msg, embed).ConfigureAwait(false);
@@ -398,7 +433,7 @@ namespace SysBot.Pokemon.Discord
         [RequireQueueRole(nameof(DiscordManager.RolesTradeCord))]
         public async Task Gift([Summary("Numerical catch ID")] string id, [Summary("User mention")] string _)
         {
-            var embed = new EmbedBuilder { Color = Color.Purple };
+            var embed = new EmbedBuilder { Color = Util.GetBorderColor(true) };
             string name = $"{Context.User.Username}'s Gift";
 
             if (!TradeCordParanoiaChecks(out string msg))
@@ -463,9 +498,9 @@ namespace SysBot.Pokemon.Discord
 
             var pkm = download.Data!;
             var la = new LegalityAnalysis(pkm);
-            if (!la.Valid || !(pkm is PK8))
+            if (!la.Valid || pkm is not T)
             {
-                msg = "Please upload a legal Gen8 Pokémon.";
+                msg = $"Please upload a legal Pokémon from {(typeof(T) == typeof(PK8) ? "Sword and Shield" : "Brilliant Diamond and Shining Pearl")}.";
                 await Util.EmbedUtil(Context, name, msg).ConfigureAwait(false);
                 return;
             }
@@ -551,7 +586,7 @@ namespace SysBot.Pokemon.Discord
         [RequireQueueRole(nameof(DiscordManager.RolesTradeCord))]
         public async Task TradeCordDex([Summary("Optional parameter \"missing\" for missing entries.")] string input = "")
         {
-            var embed = new EmbedBuilder { Color = Color.DarkBlue };
+            var embed = new EmbedBuilder { Color = Util.GetBorderColor(false) };
             input = input.ToLower();
             var name = $"{Context.User.Username}'s {(input == "missing" ? "Missing Entries" : "Dex Info")}";
 
@@ -586,7 +621,7 @@ namespace SysBot.Pokemon.Discord
         [RequireQueueRole(nameof(DiscordManager.RolesTradeCord))]
         public async Task TradeCordDexPerks([Summary("Optional perk name and amount to add, or \"clear\" to remove all perks.")][Remainder] string input = "")
         {
-            var embed = new EmbedBuilder { Color = Color.DarkBlue };
+            var embed = new EmbedBuilder { Color = Util.GetBorderColor(false) };
             string name = $"{Context.User.Username}'s Perks";
             input = input.ToLower();
 
@@ -665,22 +700,23 @@ namespace SysBot.Pokemon.Discord
                 else footerMsg = "Sounds can be heard coming from inside! This Egg will hatch soon!";
             }
 
-            var pokeImg = TradeExtensions.PokeImg(result.Poke, canGmax, Hub.Config.TradeCord.UseFullSizeImages);
+            var pokeImg = TradeExtensions<T>.PokeImg(result.Poke, canGmax, Hub.Config.TradeCord.UseFullSizeImages);
             var ballImg = $"https://raw.githubusercontent.com/BakaKaito/HomeImages/main/Ballimg/50x50/{((Ball)result.Poke.Ball).ToString().ToLower()}ball.png";
-            var form = TradeCordHelperUtil<T>.FormOutput(result.Poke.Species, result.Poke.Form, out _).Replace("-", "");
+            var form = TradeExtensions<T>.FormOutput(result.Poke.Species, result.Poke.Form, out _).Replace("-", "");
             var lvlProgress = (Experience.GetEXPToLevelUpPercentage(result.Poke.CurrentLevel, result.Poke.EXP, result.Poke.PersonalInfo.EXPGrowth) * 100.0).ToString("N1");
             msg = $"\n**Nickname:** {result.User.Buddy.Nickname}" +
                   $"\n**Species:** {SpeciesName.GetSpeciesNameGeneration(result.Poke.Species, 2, 8)} {GameInfo.GenderSymbolUnicode[result.Poke.Gender].Replace("-", "")}" +
                   $"\n**Form:** {(form == string.Empty ? "-" : form)}" +
+                  $"\n**Gigantamax:** {(canGmax ? "Yes" : "No")}" +
                   $"\n**Ability:** {result.User.Buddy.Ability}" +
                   $"\n**Level:** {result.Poke.CurrentLevel}" +
                   $"\n**Friendship:** {result.Poke.CurrentFriendship}" +
                   $"\n**Held item:** {GameInfo.Strings.itemlist[result.Poke.HeldItem]}" +
-                  $"\n**Time of day:** {TradeCordHelperUtil<T>.TimeOfDayString(result.User.UserInfo.TimeZoneOffset, false)}" +
+                  $"\n**Time of day:** {TradeCordHelper<T>.TimeOfDayString(result.User.UserInfo.TimeZoneOffset, false)}" +
                   $"{(!result.Poke.IsEgg && result.Poke.CurrentLevel < 100 ? $"\n**Progress to next level:** {lvlProgress}%" : "")}";
 
             var author = new EmbedAuthorBuilder { Name = result.EmbedName, IconUrl = ballImg };
-            var embed = new EmbedBuilder { Color = result.Poke.IsShiny ? Color.Blue : Color.DarkBlue, ThumbnailUrl = pokeImg }.WithFooter(x =>
+            var embed = new EmbedBuilder { Color = Util.GetBorderColor(false, result.Poke), ThumbnailUrl = pokeImg }.WithFooter(x =>
             {
                 x.Text = footerMsg;
                 x.IconUrl = "https://i.imgur.com/nXNBrlr.png";
@@ -743,13 +779,13 @@ namespace SysBot.Pokemon.Discord
             }
 
             bool canGmax = new ShowdownSet(ShowdownParsing.GetShowdownText(result.Poke)).CanGigantamax;
-            var pokeImg = TradeExtensions.PokeImg(result.Poke, canGmax, Hub.Config.TradeCord.UseFullSizeImages);
+            var pokeImg = TradeExtensions<T>.PokeImg(result.Poke, canGmax, Hub.Config.TradeCord.UseFullSizeImages);
             string flavorText = Helper.GetDexFlavorText(result.Poke.Species, result.Poke.Form, canGmax);
 
             var author = new EmbedAuthorBuilder { Name = name };
             var embed = new EmbedBuilder
             {
-                Color = result.Poke.IsShiny ? Color.Blue : Color.DarkBlue,
+                Color = Util.GetBorderColor(false, result.Poke),
                 ThumbnailUrl = pokeImg,
                 Description = result.Message,
                 Author = author,
@@ -772,7 +808,7 @@ namespace SysBot.Pokemon.Discord
             }
 
             input = input.Replace(" ", "").ToLower();
-            var item = TradeExtensions.EnumParse<TCItems>(input);
+            var item = TradeExtensions<T>.EnumParse<TCItems>(input);
             if (item <= 0)
             {
                 msg = "Not a valid item or item cannot be held.";
@@ -792,7 +828,7 @@ namespace SysBot.Pokemon.Discord
         public async Task GiftItem([Remainder][Summary("Item name")] string input)
         {
             string name = $"{Context.User.Username}'s Gift Item";
-            var embed = new EmbedBuilder { Color = Color.Purple };
+            var embed = new EmbedBuilder { Color = Util.GetBorderColor(true) };
 
             if (!TradeCordParanoiaChecks(out string msg))
             {
@@ -828,7 +864,7 @@ namespace SysBot.Pokemon.Discord
             }
 
             input = input.Replace(count, "").Replace(" ", "");
-            var item = TradeExtensions.EnumParse<TCItems>(input);
+            var item = TradeExtensions<T>.EnumParse<TCItems>(input);
             if (item <= 0)
             {
                 msg = "Not a valid item or item cannot be gifted.";
@@ -900,7 +936,7 @@ namespace SysBot.Pokemon.Discord
             }
 
             input = input.Replace(" ", "").ToLower();
-            var item = TradeExtensions.EnumParse<TCItems>(input);
+            var item = TradeExtensions<T>.EnumParse<TCItems>(input);
             if (item <= 0)
             {
                 msg = "Not a valid item or item cannot be dropped.";
@@ -931,6 +967,24 @@ namespace SysBot.Pokemon.Discord
             await Util.EmbedUtil(Context, name, result.Message).ConfigureAwait(false);
         }
 
+        [Command("TradeCordPing")]
+        [Alias("tcping", "tcp")]
+        [Summary("Toggle DM notifications for TradeCord events.")]
+        [RequireQueueRole(nameof(DiscordManager.RolesTradeCord))]
+        public async Task ToggleDMPing()
+        {
+            string name = $"{Context.User.Username}'s DM Notification";
+            if (!TradeCordParanoiaChecks(out string msg))
+            {
+                await Util.EmbedUtil(Context, name, msg).ConfigureAwait(false);
+                return;
+            }
+
+            var ctx = new TradeCordHelper<T>.TC_CommandContext { Username = Context.User.Username, ID = Context.User.Id, Context = TCCommandContext.EventPing };
+            var result = Helper.ProcessTradeCord(ctx, new string[] { });
+            await Util.EmbedUtil(Context, name, result.Message).ConfigureAwait(false);
+        }
+
         [Command("TradeCordMuteClear")]
         [Alias("mc")]
         [Summary("Remove the mentioned user from the mute list.")]
@@ -944,7 +998,7 @@ namespace SysBot.Pokemon.Discord
             }
 
             var usr = Context.Message.MentionedUsers.First();
-            bool mute = TradeCordHelperUtil<T>.MuteList.Remove(usr.Id);
+            bool mute = TradeCordHelper<T>.MuteList.Remove(usr.Id);
             var msg = mute ? $"{usr.Username} was unmuted." : $"{usr.Username} isn't muted.";
             await ReplyAsync(msg).ConfigureAwait(false);
         }
@@ -971,18 +1025,18 @@ namespace SysBot.Pokemon.Discord
         {
             if (Info.Hub.Config.TradeCord.TradeCordCooldown > 0)
             {
-                if (!TradeCordHelperUtil<T>.TradeCordCooldownDict.ContainsKey(id))
-                    TradeCordHelperUtil<T>.TradeCordCooldownDict.Add(id, DateTime.Now);
-                else TradeCordHelperUtil<T>.TradeCordCooldownDict[id] = DateTime.Now;
+                if (!TradeCordHelper<T>.TradeCordCooldownDict.ContainsKey(id))
+                    TradeCordHelper<T>.TradeCordCooldownDict.Add(id, DateTime.Now);
+                else TradeCordHelper<T>.TradeCordCooldownDict[id] = DateTime.Now;
             }
         }
 
         private bool TradeCordCanCatch(ulong id, out TimeSpan timeRemaining)
         {
             timeRemaining = new();
-            if (TradeCordHelperUtil<T>.TradeCordCooldownDict.ContainsKey(id))
+            if (TradeCordHelper<T>.TradeCordCooldownDict.ContainsKey(id))
             {
-                var timer = TradeCordHelperUtil<T>.TradeCordCooldownDict[id].AddSeconds(Hub.Config.TradeCord.TradeCordCooldown);
+                var timer = TradeCordHelper<T>.TradeCordCooldownDict[id].AddSeconds(Hub.Config.TradeCord.TradeCordCooldown);
                 timeRemaining = timer - DateTime.Now;
                 if (DateTime.Now < timer)
                     return false;
@@ -996,7 +1050,7 @@ namespace SysBot.Pokemon.Discord
             var id = Context.User.Id;
             if (!Directory.Exists("TradeCord"))
                 Directory.CreateDirectory("TradeCord");
-            else if (TradeCordHelperUtil<T>.MuteList.Contains(id))
+            else if (TradeCordHelper<T>.MuteList.Contains(id))
             {
                 msg = "Command ignored due to suspicion of you running a script. Contact the bot owner if this is a false-positive.";
                 return false;
@@ -1015,13 +1069,23 @@ namespace SysBot.Pokemon.Discord
 
             msg = string.Empty;
             List<int> rateCheck = new();
-            IEnumerable<int> p = new[] { Hub.Config.TradeCord.TradeCordCooldown, Hub.Config.TradeCord.CatchRate, Hub.Config.TradeCord.CherishRate, Hub.Config.TradeCord.EggRate, Hub.Config.TradeCord.ItemRate, Hub.Config.TradeCord.GmaxRate, Hub.Config.TradeCord.SquareShinyRate, Hub.Config.TradeCord.StarShinyRate };
+            IEnumerable<int> p = new[] { Hub.Config.TradeCord.TradeCordCooldown, Hub.Config.TradeCord.CatchRate, Hub.Config.TradeCord.CherishRate, Hub.Config.TradeCord.EggRate, Hub.Config.TradeCord.ItemRate, Hub.Config.TradeCord.GmaxRate };
             rateCheck.AddRange(p);
             if (rateCheck.Any(x => x < 0 || x > 100))
             {
-                msg = "TradeCord settings cannot be less than zero or more than 100.";
+                msg = "TradeCord settings for cooldown, catch rate, cherish rate, egg rate, item rate or gmax rate cannot be less than zero or more than 100.";
                 return false;
             }
+            rateCheck.Clear();
+
+            IEnumerable<int> s = new[] { Hub.Config.TradeCord.SquareShinyRate, Hub.Config.TradeCord.StarShinyRate };
+            rateCheck.AddRange(s);
+            if (rateCheck.Any(x => x < 0 || x > 200))
+            {
+                msg = "TradeCord settings for shiny rates cannot be less than zero or more than 200.";
+                return false;
+            }
+
             return true;
         }
     }

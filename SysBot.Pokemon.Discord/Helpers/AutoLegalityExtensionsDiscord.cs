@@ -9,7 +9,7 @@ namespace SysBot.Pokemon.Discord
 {
     public static class AutoLegalityExtensionsDiscord
     {
-        public static async Task ReplyWithLegalizedSetAsync<T>(this ISocketMessageChannel channel, ITrainerInfo sav, ShowdownSet set) where T : PKM, new()
+        public static async Task ReplyWithLegalizedSetAsync(this ISocketMessageChannel channel, ITrainerInfo sav, ShowdownSet set)
         {
             if (set.Species <= 0)
             {
@@ -21,8 +21,10 @@ namespace SysBot.Pokemon.Discord
             {
                 var template = AutoLegalityWrapper.GetTemplate(set);
                 var pkm = sav.GetLegal(template, out var result);
-				if (pkm.Nickname.ToLower() == "egg" && Breeding.CanHatchAsEgg(pkm.Species))
-					TradeExtensions.EggTrade((T)pkm);
+                if (pkm is PK8 && pkm.Nickname.ToLower() == "egg" && Breeding.CanHatchAsEgg(pkm.Species))
+					TradeExtensions<PK8>.EggTrade(pkm);
+                else if (pkm is PB8 && pkm.Nickname.ToLower() == "egg" && Breeding.CanHatchAsEgg(pkm.Species))
+                    TradeExtensions<PB8>.EggTrade(pkm);
 
                 var la = new LegalityAnalysis(pkm);
                 var spec = GameInfo.Strings.Species[template.Species];
@@ -41,12 +43,12 @@ namespace SysBot.Pokemon.Discord
             }
         }
 
-        public static async Task ReplyWithLegalizedSetAsync<T>(this ISocketMessageChannel channel, string content, int gen) where T : PKM, new()
+        public static async Task ReplyWithLegalizedSetAsync(this ISocketMessageChannel channel, string content, int gen)
         {
             content = ReusableActions.StripCodeBlock(content);
             var set = new ShowdownSet(content);
             var sav = AutoLegalityWrapper.GetTrainerInfo(gen);
-            await channel.ReplyWithLegalizedSetAsync<T>(sav, set).ConfigureAwait(false);
+            await channel.ReplyWithLegalizedSetAsync(sav, set).ConfigureAwait(false);
         }
 
         public static async Task ReplyWithLegalizedSetAsync<T>(this ISocketMessageChannel channel, string content) where T : PKM, new()
@@ -54,7 +56,7 @@ namespace SysBot.Pokemon.Discord
             content = ReusableActions.StripCodeBlock(content);
             var set = new ShowdownSet(content);
             var sav = AutoLegalityWrapper.GetTrainerInfo<T>();
-            await channel.ReplyWithLegalizedSetAsync<T>(sav, set).ConfigureAwait(false);
+            await channel.ReplyWithLegalizedSetAsync(sav, set).ConfigureAwait(false);
         }
 
         public static async Task ReplyWithLegalizedSetAsync(this ISocketMessageChannel channel, IAttachment att)

@@ -20,7 +20,7 @@ namespace SysBot.Pokemon.Discord
         [Priority(1)]
         public async Task ConvertShowdown([Summary("Generation/Format")] int gen, [Remainder][Summary("Showdown Set")] string content)
         {
-            await Context.Channel.ReplyWithLegalizedSetAsync<T>(content, gen).ConfigureAwait(false);
+            await Context.Channel.ReplyWithLegalizedSetAsync(content, gen).ConfigureAwait(false);
         }
 
         [Command("convert"), Alias("showdown")]

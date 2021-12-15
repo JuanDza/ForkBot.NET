@@ -143,7 +143,7 @@ namespace SysBot.Pokemon
                 var gmax = isEvent ? raidInfo.RaidDistributionEncounterTable.Entries(i).Value.IsGigantamax : raidInfo.RaidEncounterTable.Entries(i).Value.IsGigantamax;
                 var form = (int)(isEvent ? raidInfo.RaidDistributionEncounterTable.Entries(i).Value.AltForm : raidInfo.RaidEncounterTable.Entries(i).Value.AltForm);
                 var speciesName = SpeciesName.GetSpeciesNameGeneration(speciesID, 2, 8);
-                var formStr = TradeCordHelperUtil<PK8>.FormOutput(speciesID, form, out _);
+                var formStr = TradeExtensions<PK8>.FormOutput(speciesID, form, out _);
 
                 uint EC = (uint)rng.NextInt(0xFFFFFFFF);
                 uint SIDTID = (uint)rng.NextInt(0xFFFFFFFF);
@@ -166,7 +166,7 @@ namespace SysBot.Pokemon
                 SeedSearchUtil.GetNature(rng, (uint)speciesID, (uint)form, out uint natureT);
 
                 speciesList.Add(star + " - " + speciesName + formStr + (gmax ? "-Gmax" : "") + " - " + splitIV[flawless - 1] + "\n" +
-                (GenderType)genderT + " - " + (Nature)natureT + " - " + (abilityT != 2 ? abilityT + 1 : "H") + ": " + (Ability)pkm.Ability + " - " + (ShinyType)shinytype + " - " + TradeExtensions.Characteristics[characteristic]);
+                (GenderType)genderT + " - " + (Nature)natureT + " - " + (abilityT != 2 ? abilityT + 1 : "H") + ": " + (Ability)pkm.Ability + " - " + (ShinyType)shinytype + " - " + TradeExtensions<PK8>.Characteristics[characteristic]);
 
                 if (raid)
                     break;
