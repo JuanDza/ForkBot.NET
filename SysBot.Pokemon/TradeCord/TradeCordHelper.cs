@@ -1650,7 +1650,7 @@ namespace SysBot.Pokemon
                     result.Message = "Your buddy isn't holding an item.";
                     return false;
                 }
-                else if (!Enum.IsDefined(typeof(TCItem), pk.HeldItem))
+                else if (!Enum.IsDefined(typeof(TCItems), pk.HeldItem))
                 {
                     result.Message = "Oops, this item is not yet available!";
                     return false;

@@ -299,8 +299,9 @@ namespace SysBot.Pokemon
                 else fd = true;
             }
 
+            var form = pkm.Species is (int)Species.Sinistea or (int)Species.Polteageist ? 0 : pkm.Form;
             baseLink[2] = pkm.Species < 10 ? $"000{pkm.Species}" : pkm.Species < 100 && pkm.Species > 9 ? $"00{pkm.Species}" : $"0{pkm.Species}";
-            baseLink[3] = pkm.Form < 10 ? $"00{pkm.Form}" : $"0{pkm.Form}";
+            baseLink[3] = pkm.Form < 10 ? $"00{form}" : $"0{form}";
             baseLink[4] = pkm.PersonalInfo.OnlyFemale ? "fo" : pkm.PersonalInfo.OnlyMale ? "mo" : pkm.PersonalInfo.Genderless ? "uk" : fd ? "fd" : md ? "md" : "mf";
             baseLink[5] = canGmax ? "g" : "n";
             baseLink[6] = "0000000" + (pkm.Species == (int)Species.Alcremie ? pkm.Data[0xE4] : 0);
