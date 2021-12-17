@@ -151,7 +151,7 @@ namespace SysBot.Pokemon.Discord
 
                 contents.Embed.Fields[0].Value = contents.Pages[page];
                 contents.Embed.Footer.Text = $"Page {page + 1} of {contents.Pages.Count}";
-                await msg.RemoveReactionAsync(reactions[reaction.Emote.Name == reactions[0].Name ? 0 : 1], user);
+                await msg.RemoveReactionAsync(reactions[reaction.Emote.Name == reactions[0].Name ? 0 : 1], user).ConfigureAwait(false);
                 await msg.ModifyAsync(msg => msg.Embed = contents.Embed.Build()).ConfigureAwait(false);
             }
             else if (reaction.Emote.Name == reactions[2].Name || reaction.Emote.Name == reactions[3].Name)
@@ -167,7 +167,7 @@ namespace SysBot.Pokemon.Discord
                 contents.Pages = ListUtilPrep(tempEntry);
                 contents.Embed.Fields[0].Value = contents.Pages[page];
                 contents.Embed.Footer.Text = $"Page {page + 1} of {contents.Pages.Count}";
-                await msg.RemoveReactionAsync(reactions[reaction.Emote.Name == reactions[2].Name ? 2 : 3], user);
+                await msg.RemoveReactionAsync(reactions[reaction.Emote.Name == reactions[2].Name ? 2 : 3], user).ConfigureAwait(false);
                 await msg.ModifyAsync(msg => msg.Embed = contents.Embed.Build()).ConfigureAwait(false);
             }
         }

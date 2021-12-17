@@ -1990,7 +1990,7 @@ namespace SysBot.Pokemon
 
         private T SetProcessBDSP(string speciesName, List<string> trainerInfo, int eventForm)
         {
-            Shiny shiny = Rng.SpeciesRNG != (int)Species.Cresselia && Rng.ShinyRNG >= 200 - Settings.SquareShinyRate ? Shiny.AlwaysSquare : Rng.ShinyRNG >= 200 - Settings.StarShinyRate ? Shiny.AlwaysStar : Shiny.Never;
+            Shiny shiny = Rng.ShinyRNG >= 200 - Settings.SquareShinyRate ? Shiny.AlwaysSquare : Rng.ShinyRNG >= 200 - Settings.StarShinyRate ? Shiny.AlwaysStar : Shiny.Never;
             string shinyType = shiny == Shiny.AlwaysSquare ? "\nShiny: Square" : shiny == Shiny.AlwaysStar ? "\nShiny: Star" : "";
 
             if (Rng.SpeciesRNG == (int)Species.NidoranF || Rng.SpeciesRNG == (int)Species.NidoranM)
@@ -2023,6 +2023,23 @@ namespace SysBot.Pokemon
             var template = AutoLegalityWrapper.GetTemplate(set);
             var sav = AutoLegalityWrapper.GetTrainerInfo<T>();
             var pk = (T)sav.GetLegal(template, out string result);
+
+            int attempts = 0;
+            while (result != "Regenerated" && attempts < 10)
+            {
+                set = new ShowdownSet($"{showdown}{ball}");
+                template = AutoLegalityWrapper.GetTemplate(set);
+                sav = AutoLegalityWrapper.GetTrainerInfo<T>();
+                pk = (T)sav.GetLegal(template, out result);
+                attempts++;
+
+                if (attempts == 5 && shiny == Shiny.AlwaysSquare)
+                {
+                    shiny = Shiny.AlwaysStar;
+                    shinyType = "\nShiny: Star";
+                    showdown = $"{speciesName}{formHack}{shinyType}\n{string.Join("\n", trainerInfo)}";
+                }
+            }
 
             if (pk.FatefulEncounter || result != "Regenerated")
                 return pk;
