@@ -54,16 +54,25 @@ namespace SysBot.Pokemon
             Ball[] bdspBalls = { Ball.Master, Ball.Ultra, Ball.Great, Ball.Poke, Ball.Safari, Ball.Net, Ball.Dive, Ball.Nest, Ball.Repeat, Ball.Timer, Ball.Luxury, Ball.Premier, Ball.Dusk, Ball.Heal, Ball.Quick, Ball.Fast, Ball.Level, Ball.Lure, Ball.Heavy, Ball.Love, Ball.Friend, Ball.Moon };
             Ball[] balls = typeof(T) == typeof(PK8) ? (Ball[])Enum.GetValues(typeof(Ball)) : bdspBalls;
 
+            bool master = false;
             List<Ball> legalBalls = new();
+            if (new ShowdownSet($"{showdownText}\nBall: Master").Ability != -1) // Attempt to check if a Master Ball encounter would be valid.
+                master = true;
+
+            var tempSet = new ShowdownSet($"{showdownText}");
+            var tempTempl = AutoLegalityWrapper.GetTemplate(tempSet);
+            var tempSav = AutoLegalityWrapper.GetTrainerInfo<T>();
+            var tempPk = (T)tempSav.GetLegal(tempTempl, out _);
+
             for (int i = 0; i < balls.Length; i++)
             {
-                var tempSet = new ShowdownSet($"{showdownText}\nBall: {balls[i]}");
-                var tempTempl = AutoLegalityWrapper.GetTemplate(tempSet);
-                var tempSav = AutoLegalityWrapper.GetTrainerInfo<T>();
-                _ = (T)tempSav.GetLegal(tempTempl, out string res);
-                if (res == "Regenerated")
+                tempPk.Ball = (int)balls[i];
+                if (new LegalityAnalysis(tempPk).Valid)
                     legalBalls.Add(balls[i]);
             }
+
+            if (master && !legalBalls.Contains(Ball.Master))
+                legalBalls.Add(Ball.Master);
             return legalBalls.ToArray();
         }
 
@@ -294,7 +303,7 @@ namespace SysBot.Pokemon
 
             if (Enum.IsDefined(typeof(GenderDependent), pkm.Species) && !canGmax && pkm.Form == 0)
             {
-                if (pkm.Gender == 0)
+                if (pkm.Gender == 0 && pkm.Species != (int)Species.Torchic)
                     md = true;
                 else fd = true;
             }

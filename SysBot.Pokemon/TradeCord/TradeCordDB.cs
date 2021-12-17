@@ -123,7 +123,7 @@ namespace SysBot.Pokemon
             return pkm;
         }
 
-        protected T RngRoutineBDSP(T pkm, IBattleTemplate template, Shiny shiny)
+        protected T RngRoutineBDSP(T pkm, Shiny shiny)
         {
             var laInit = new LegalityAnalysis(pkm);
             var nature = pkm.Nature;
@@ -154,31 +154,17 @@ namespace SysBot.Pokemon
                 pkm.SetRelearnMoves(pkm.GetSuggestedRelearnMoves(enc));
             }
             pkm.HealPP();
-
-            if (enc is EncounterStatic8b static8 && !pkm.FatefulEncounter)
-            {
-                if (static8.Roaming)
-                {
-                    int flawless = Random.Next(static8.FlawlessIVCount, 7);
-                    int iter = 0;
-                    do
-                    {
-                        Roaming8bRNG.ApplyDetails(pkm, EncounterCriteria.GetCriteria(template), shiny, flawless);
-                        if (iter >= 100)
-                        {
-                            flawless = Random.Next(static8.FlawlessIVCount, 7);
-                            iter = 0;
-                        }
-                        iter++;
-                    } while (!Roaming8bRNG.ValidateRoamingEncounter(pkm, shiny, static8.FlawlessIVCount));
-                }
-            }
-            else if (!pkm.FatefulEncounter)
+            
+            if (enc is not EncounterStatic8b static8 && !pkm.FatefulEncounter)
             {
                 if (enc is EncounterSlot8b slot8)
                     pkm.SetAbilityIndex(slot8.Ability == -1 ? Random.Next(3) : slot8.Ability == 0 ? Random.Next(2) : slot8.Ability == 1 ? 0 : slot8.Ability == 2 ? 1 : 2);
                 else pkm.SetAbilityIndex(Random.Next(3));
+
                 pkm.IVs = pkm.SetRandomIVs(Random.Next(3, 7));
+                if (shiny == Shiny.AlwaysSquare)
+                    CommonEdits.SetShiny(pkm, shiny);
+
             }
 
             pkm = (T)TradeExtensions<T>.TrashBytes(pkm);
@@ -634,7 +620,21 @@ namespace SysBot.Pokemon
         }
 
         private bool CanHatchTradeCord(int species) => Breeding.CanHatchAsEgg(species) || species == (int)Species.Ditto;
-        private bool SameEvoTree(PKM pkm1, PKM pkm2) => EvolutionTree.GetEvolutionTree(pkm1, 8).IsSpeciesDerivedFrom(pkm1.Species, pkm1.Form, pkm2.Species, pkm2.Form) || EvolutionTree.GetEvolutionTree(pkm2, 8).IsSpeciesDerivedFrom(pkm2.Species, pkm2.Form, pkm1.Species, pkm1.Form);
+
+        private bool SameEvoTree(PKM pkm1, PKM pkm2)
+        {
+            var tree = EvolutionTree.GetEvolutionTree(pkm1, 8);
+            var evos = tree.GetValidPreEvolutions(pkm1, 100, 8, true);
+            var encs = EncounterEggGenerator.GenerateEggs(pkm1, evos, 8, false).ToArray();
+            var base1 = encs.Length > 0 ? encs[^1].Species : -1;
+
+            tree = EvolutionTree.GetEvolutionTree(pkm2, 8);
+            evos = tree.GetValidPreEvolutions(pkm2, 100, 8, true);
+            encs = EncounterEggGenerator.GenerateEggs(pkm2, evos, 8, false).ToArray();
+            var base2 = encs.Length > 0 ? encs[^1].Species : -2;
+
+            return base1 == base2;
+        }
 
         private List<EvoCriteria> EggEvoCriteria(T pk1, T pk2)
         {
@@ -724,7 +724,7 @@ namespace SysBot.Pokemon
 
                 match = settings.PokeEventType switch
                 {
-                    PokeEventType.Legends => IsLegendaryOrMythical(SpeciesName.GetSpeciesNameGeneration(Rng.SpeciesRNG, 2, 8)),
+                    PokeEventType.Legends => IsLegendaryOrMythical(Rng.SpeciesRNG),
                     PokeEventType.Babies => Rng.SpeciesRNG != -1,
                     PokeEventType.Halloween => Enum.IsDefined(typeof(Halloween), Rng.SpeciesRNG),
                     PokeEventType.CottonCandy => IsCottonCandy(Rng.SpeciesRNG, form),

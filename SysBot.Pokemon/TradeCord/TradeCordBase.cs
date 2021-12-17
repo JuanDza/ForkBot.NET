@@ -112,6 +112,7 @@ namespace SysBot.Pokemon
                 SpeciesBoostRNG = Random.Next(101),
                 ItemRNG = Random.Next(101),
                 ShinyCharmRNG = Random.Next(4097),
+                LegendaryRNG = Random.Next(101),
             };
         }
 
@@ -174,11 +175,7 @@ namespace SysBot.Pokemon
             return userIDs.ToArray();
         }
 
-        protected bool IsLegendaryOrMythical(string species)
-        {
-            int id = SpeciesName.GetSpeciesID(species);
-            return Legal.Legends.Contains(id) || Legal.SubLegends.Contains(id) || Legal.Mythicals.Contains(id);
-        }
+        protected bool IsLegendaryOrMythical(int species) => Legal.Legends.Contains(species) || Legal.SubLegends.Contains(species) || Legal.Mythicals.Contains(species);
 
         protected A GetLookupAsClassObject<A>(ulong id, string table, string filter = "", bool tableJoin = false)
         {
@@ -833,7 +830,7 @@ namespace SysBot.Pokemon
                                             cmd.Parameters.AddWithValue("@is_egg", catches[c].Egg);
                                             cmd.Parameters.AddWithValue("@is_favorite", favArr.Contains(catches[c].ID));
                                             cmd.Parameters.AddWithValue("@was_traded", catches[c].Traded);
-                                            cmd.Parameters.AddWithValue("@is_legendary", IsLegendaryOrMythical(catches[c].Species));
+                                            cmd.Parameters.AddWithValue("@is_legendary", IsLegendaryOrMythical(pk.Species));
                                             cmd.Parameters.AddWithValue("@is_event", pk.FatefulEncounter);
                                             cmd.Parameters.AddWithValue("@is_gmax", set.CanGigantamax);
                                             cmd.ExecuteNonQuery();
@@ -878,7 +875,7 @@ namespace SysBot.Pokemon
 
             var resourcePath = "SysBot.Pokemon.TradeCord.Resources.DexFlavor.txt";
             using StreamReader reader = new(Assembly.GetExecutingAssembly().GetManifestResourceStream(resourcePath));
-            if (form > 0 && IsLegendaryOrMythical(SpeciesName.GetSpeciesNameGeneration(species, 2, 8)))
+            if (form > 0 && IsLegendaryOrMythical(species))
                 form = 0;
 
             if (!gmax)
@@ -1322,6 +1319,7 @@ namespace SysBot.Pokemon
             public int SpeciesBoostRNG { get; set; }
             public int ItemRNG { get; set; }
             public int ShinyCharmRNG { get; set; }
+            public int LegendaryRNG { get; set; }
         }
 
         public class TCUserInfo

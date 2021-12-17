@@ -269,21 +269,27 @@ namespace SysBot.Pokemon
                     }
                 }
 
-                DateTime.TryParse(Settings.EventEnd, out DateTime endTime);
-                bool ended = endTime != default && DateTime.Now > endTime;
-                bool boostProc = user.Perks.SpeciesBoost != 0 && Rng.SpeciesBoostRNG >= 99;
-                MysteryGift? mg = default;
-                int eventForm = -1;
-
-                if (Settings.EnableEvent && !ended)
-                    EventHandler(Settings, out mg, out eventForm);
-                else if (boostProc)
-                    Rng.SpeciesRNG = user.Perks.SpeciesBoost;
-
                 if (Rng.CatchRNG >= 100 - Settings.CatchRate)
                 {
+                    if (Rng.LegendaryRNG <= 100 - Settings.LegendaryRate && IsLegendaryOrMythical(Rng.SpeciesRNG))
+                    {
+                        while (IsLegendaryOrMythical(Rng.SpeciesRNG))
+                            Rng.SpeciesRNG = Dex[Random.Next(Dex.Length)];
+                    }
+
+                    DateTime.TryParse(Settings.EventEnd, out DateTime endTime);
+                    bool ended = endTime != default && DateTime.Now > endTime;
+                    bool boostProc = user.Perks.SpeciesBoost != 0 && Rng.SpeciesBoostRNG >= 99;
+                    MysteryGift? mg = default;
+                    int eventForm = -1;
+
+                    if (Settings.EnableEvent && !ended)
+                        EventHandler(Settings, out mg, out eventForm);
+                    else if (boostProc)
+                        Rng.SpeciesRNG = user.Perks.SpeciesBoost;
+
                     var speciesName = SpeciesName.GetSpeciesNameGeneration(Rng.SpeciesRNG, 2, 8);
-                    if (Game == GameVersion.SWSH && (CherishOnly.Contains(Rng.SpeciesRNG) || Rng.CherishRNG >= 100 - Settings.CherishRate))
+                    if (Game == GameVersion.SWSH && (CherishOnly.Contains(Rng.SpeciesRNG) || Rng.CherishRNG >= 100 - Settings.CherishRate || mg != default))
                     {
                         var mgRng = mg == default ? MysteryGiftRng(Settings) : mg;
                         if (mgRng != default)
@@ -625,7 +631,8 @@ namespace SysBot.Pokemon
                 result.SQLCommands.Add(DBCommandConstructor("catches", "", $"where user_id = ? and id in ({questionM})", names, obj, SQLTableContext.Delete));
                 result.SQLCommands.Add(DBCommandConstructor("binary_catches", "", $"where user_id = ? and id in ({questionM})", names, obj, SQLTableContext.Delete));
 
-                bool isLegend = IsLegendaryOrMythical(speciesAndForm ? input.Split('-')[0] : input);
+                var specID = SpeciesName.GetSpeciesID(speciesAndForm ? input.Split('-')[0] : input, 2);
+                bool isLegend = IsLegendaryOrMythical(specID);
                 string ballStr = ball != Ball.None ? $"Pokémon in {ball} Ball" : "";
                 string generalOutput = input == "Shinies" ? "shiny Pokémon" : input == "Events" ? "non-shiny event Pokémon" : input == "Legendaries" ? "non-shiny legendary Pokémon" : ball != Ball.None ? ballStr : $"non-shiny {input}";
                 string exclude = ball == Ball.Cherish || input == "Events" ? ", legendaries," : input == "Legendaries" ? ", events," : $", events,{(isLegend ? "" : " legendaries,")}";
@@ -850,7 +857,7 @@ namespace SysBot.Pokemon
                     newIDParse.Add(caught.Key);
 
                 var newID = Indexing(newIDParse.OrderBy(x => x).ToArray());
-                bool isLegend = IsLegendaryOrMythical(match.Species);
+                bool isLegend = IsLegendaryOrMythical(pk.Species);
 
                 var names = CatchValues.Replace(" ", "").Split(',');
                 var obj = new object[] { m_user.UserInfo.UserID, newID, match.Shiny, match.Ball, match.Nickname, match.Species, match.Form, match.Egg, false, false, isLegend, match.Event, match.Gmax };
@@ -1991,7 +1998,7 @@ namespace SysBot.Pokemon
         private T SetProcessBDSP(string speciesName, List<string> trainerInfo, int eventForm)
         {
             Shiny shiny = Rng.ShinyRNG >= 200 - Settings.SquareShinyRate ? Shiny.AlwaysSquare : Rng.ShinyRNG >= 200 - Settings.StarShinyRate ? Shiny.AlwaysStar : Shiny.Never;
-            string shinyType = shiny == Shiny.AlwaysSquare ? "\nShiny: Square" : shiny == Shiny.AlwaysStar ? "\nShiny: Star" : "";
+            string shinyType = shiny != Shiny.Never ? "\nShiny: Yes" : "";
 
             if (Rng.SpeciesRNG == (int)Species.NidoranF || Rng.SpeciesRNG == (int)Species.NidoranM)
                 speciesName = speciesName.Remove(speciesName.Length - 1);
@@ -2025,25 +2032,18 @@ namespace SysBot.Pokemon
             var pk = (T)sav.GetLegal(template, out string result);
 
             int attempts = 0;
-            while (result != "Regenerated" && attempts < 10)
+            while (result != "Regenerated" && attempts < 5)
             {
                 set = new ShowdownSet($"{showdown}{ball}");
                 template = AutoLegalityWrapper.GetTemplate(set);
                 sav = AutoLegalityWrapper.GetTrainerInfo<T>();
                 pk = (T)sav.GetLegal(template, out result);
                 attempts++;
-
-                if (attempts == 5 && shiny == Shiny.AlwaysSquare)
-                {
-                    shiny = Shiny.AlwaysStar;
-                    shinyType = "\nShiny: Star";
-                    showdown = $"{speciesName}{formHack}{shinyType}\n{string.Join("\n", trainerInfo)}";
-                }
             }
 
             if (pk.FatefulEncounter || result != "Regenerated")
                 return pk;
-            else return RngRoutineBDSP(pk, template, shiny);
+            else return RngRoutineBDSP(pk, shiny);
         }
 
         private void BuddySystem(TCUser user, Results result, out string buddyMsg)
@@ -2175,7 +2175,7 @@ namespace SysBot.Pokemon
         {
             var speciesName = SpeciesName.GetSpeciesNameGeneration(pk.Species, 2, 8);
             var form = TradeExtensions<T>.FormOutput(pk.Species, pk.Form, out _);
-            bool isLegend = IsLegendaryOrMythical(speciesName);
+            bool isLegend = IsLegendaryOrMythical(pk.Species);
             var set = ShowdownUtil.ConvertToShowdown(ShowdownParsing.GetShowdownText(result.Poke));
             bool canGmax = set != null && set.CanGigantamax;
             if (speciesName.Contains("Nidoran"))
