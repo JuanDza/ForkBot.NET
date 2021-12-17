@@ -162,11 +162,11 @@ namespace SysBot.Pokemon
                 }
                 catch (Exception ex)
                 {
-                    Base.LogUtil.LogError($"Something went wrong during {ctx.Context} execution for {ctx.Username}.\nMessage: {ex.Message}\nStack: {ex.StackTrace}\nInner: {ex.InnerException}", "[TradeCord]");
+                    Base.LogUtil.LogError($"Something went wrong during {ctx.Context} execution for {ctx.Username}.\nTarget: {ex.TargetSite}\nMessage: {ex.Message}\nStack: {ex.StackTrace}\nInner: {ex.InnerException}", "[TradeCord]");
                     return new Results()
                     {
                         EmbedName = "Oops!",
-                        Message = $"Something went wrong then executing command {ctx.Context} for user {ctx.Username}!",
+                        Message = $"Something went wrong when executing command `{ctx.Context}` for user {ctx.Username}({ctx.ID})!",
                     };
                 }
             }
@@ -283,7 +283,7 @@ namespace SysBot.Pokemon
                 if (Rng.CatchRNG >= 100 - Settings.CatchRate)
                 {
                     var speciesName = SpeciesName.GetSpeciesNameGeneration(Rng.SpeciesRNG, 2, 8);
-                    if (CherishOnly.Contains(Rng.SpeciesRNG) || Rng.CherishRNG >= 100 - Settings.CherishRate)
+                    if (Game == GameVersion.SWSH && (CherishOnly.Contains(Rng.SpeciesRNG) || Rng.CherishRNG >= 100 - Settings.CherishRate))
                     {
                         var mgRng = mg == default ? MysteryGiftRng(Settings) : mg;
                         if (mgRng != default)
@@ -296,10 +296,13 @@ namespace SysBot.Pokemon
                     }
 
                     if (result.Poke.Species == 0)
-                        result.Poke = Game == GameVersion.BDSP ? SetProcessBDSP(speciesName, trainerInfo, eventForm, Settings) : SetProcessSWSH(speciesName, trainerInfo, eventForm, Settings);
+                        result.Poke = Game == GameVersion.BDSP ? SetProcessBDSP(speciesName, trainerInfo, eventForm) : SetProcessSWSH(speciesName, trainerInfo, eventForm);
 
                     if (!new LegalityAnalysis(result.Poke).Valid)
+                    {
+                        result.Message = $"Something went wrong when generating a catch!\nSpecies: {speciesName}\nForm: {result.Poke.Form}\nShiny: {Rng.ShinyRNG >= 200 - Settings.StarShinyRate}";
                         return false;
+                    }
 
                     result.Poke.ResetPartyStats();
                     result.Message = $"It put up a fight, but you caught {(result.Poke.IsShiny ? $"**{speciesName}**" : $"{speciesName}")}!";
@@ -1894,11 +1897,11 @@ namespace SysBot.Pokemon
                 return new();
 
             Shiny shiny = Shiny.Never;
-            if (Game == GameVersion.BDSP && Rng.EggShinyRNG + (dc.Shiny1 && dc.Shiny2 ? 5 : 0) >= 150 - Settings.SquareShinyRate - Settings.StarShinyRate)
+            if (Game == GameVersion.BDSP && Rng.EggShinyRNG + (dc.Shiny1 && dc.Shiny2 ? 5 : 0) >= 200 - Settings.SquareShinyRate - Settings.StarShinyRate)
                 shiny = Shiny.Always;
-            else if (Rng.EggShinyRNG + (dc.Shiny1 && dc.Shiny2 ? 5 : 0) >= 150 - Settings.SquareShinyRate)
+            else if (Rng.EggShinyRNG + (dc.Shiny1 && dc.Shiny2 ? 5 : 0) >= 200 - Settings.SquareShinyRate)
                 shiny = Shiny.AlwaysSquare;
-            else if (Rng.EggShinyRNG + (dc.Shiny1 && dc.Shiny2 ? 5 : 0) >= 150 - Settings.StarShinyRate)
+            else if (Rng.EggShinyRNG + (dc.Shiny1 && dc.Shiny2 ? 5 : 0) >= 200 - Settings.StarShinyRate)
                 shiny = Shiny.AlwaysStar;
 
             var pk = EggRngRoutine(evos, balls, generation, trainerInfo, shiny);
@@ -1911,13 +1914,13 @@ namespace SysBot.Pokemon
             return pk;
         }
 
-        private T SetProcessSWSH(string speciesName, List<string> trainerInfo, int eventForm, TradeCordSettings settings)
+        private T SetProcessSWSH(string speciesName, List<string> trainerInfo, int eventForm)
         {
             string formHack = string.Empty;
             var formEdgeCaseRng = Random.Next(11);
             string[] mewOverride = { "\n.Version=34", "\n.Version=3" };
             int[] ignoreForm = { 382, 383, 646, 716, 717, 778, 800, 845, 875, 877, 888, 889, 890, 898 };
-            Shiny shiny = Rng.ShinyRNG >= 200 - settings.SquareShinyRate ? Shiny.AlwaysSquare : Rng.ShinyRNG >= 200 - settings.StarShinyRate ? Shiny.AlwaysStar : Shiny.Never;
+            Shiny shiny = Rng.ShinyRNG >= 200 - Settings.SquareShinyRate ? Shiny.AlwaysSquare : Rng.ShinyRNG >= 200 - Settings.StarShinyRate ? Shiny.AlwaysStar : Shiny.Never;
             string shinyType = shiny == Shiny.AlwaysSquare ? "\nShiny: Square" : shiny == Shiny.AlwaysStar ? "\nShiny: Star" : "";
             if (Rng.SpeciesRNG == (int)Species.NidoranF || Rng.SpeciesRNG == (int)Species.NidoranM)
                 speciesName = speciesName.Remove(speciesName.Length - 1);
@@ -1973,7 +1976,7 @@ namespace SysBot.Pokemon
             string ball = $"\nBall: {balls[Random.Next(balls.Length)]}";
 
             var set = new ShowdownSet($"{showdown}{ball}");
-            if (set.CanToggleGigantamax(set.Species, set.Form) && Rng.GmaxRNG >= 100 - settings.GmaxRate)
+            if (set.CanToggleGigantamax(set.Species, set.Form) && Rng.GmaxRNG >= 100 - Settings.GmaxRate)
                 set.CanGigantamax = true;
 
             var template = AutoLegalityWrapper.GetTemplate(set);
@@ -1985,9 +1988,9 @@ namespace SysBot.Pokemon
             else return RngRoutineSWSH(pk, template, shiny);
         }
 
-        private T SetProcessBDSP(string speciesName, List<string> trainerInfo, int eventForm, TradeCordSettings settings)
+        private T SetProcessBDSP(string speciesName, List<string> trainerInfo, int eventForm)
         {
-            Shiny shiny = Rng.ShinyRNG >= 200 - settings.SquareShinyRate ? Shiny.AlwaysSquare : Rng.ShinyRNG >= 200 - settings.StarShinyRate ? Shiny.AlwaysStar : Shiny.Never;
+            Shiny shiny = Rng.SpeciesRNG != (int)Species.Cresselia && Rng.ShinyRNG >= 200 - Settings.SquareShinyRate ? Shiny.AlwaysSquare : Rng.ShinyRNG >= 200 - Settings.StarShinyRate ? Shiny.AlwaysStar : Shiny.Never;
             string shinyType = shiny == Shiny.AlwaysSquare ? "\nShiny: Square" : shiny == Shiny.AlwaysStar ? "\nShiny: Star" : "";
 
             if (Rng.SpeciesRNG == (int)Species.NidoranF || Rng.SpeciesRNG == (int)Species.NidoranM)
@@ -2128,7 +2131,7 @@ namespace SysBot.Pokemon
             }
 
             string msg = gifteeName != "" && entry ? $"\n{gifteeName} registered a new entry to the Pokédex!" : entry ? "\nRegistered to the Pokédex." : "";
-            if (user.Dex.Entries.Count >= 664 && user.Dex.DexCompletionCount < 20)
+            if (user.Dex.Entries.Count >= Dex.Length && user.Dex.DexCompletionCount < 20)
             {
                 user.Dex.Entries.Clear();
                 user.Dex.DexCompletionCount += 1;

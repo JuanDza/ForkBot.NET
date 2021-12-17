@@ -1211,6 +1211,8 @@ namespace SysBot.Pokemon
                                 template.EvolvesAtLevel = 53;
                             else if (preEvos[c].Species == (int)Tangrowth)
                                 template.EvolvesAtLevel = 24;
+                            else if (preEvos[c].Species == (int)Ambipom)
+                                template.EvolvesAtLevel = 31;
 
                             list.Add(template);
                         }

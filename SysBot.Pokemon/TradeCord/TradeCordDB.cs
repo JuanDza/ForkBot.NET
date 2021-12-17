@@ -523,7 +523,7 @@ namespace SysBot.Pokemon
                     (int)Species.Tangrowth or (int)Species.Yanmega when !pk.RelearnMoves.Contains(246) => 246, // Ancient Power
                     (int)Species.Grapploct when !pk.RelearnMoves.Contains(269) => 269, // Taunt
                     (int)Species.Lickilicky when !pk.RelearnMoves.Contains(205) => 205, // Rollout
-                    (int)Species.Aipom when !pk.RelearnMoves.Contains(458) => 458, // Double Hit
+                    (int)Species.Ambipom when !pk.RelearnMoves.Contains(458) => 458, // Double Hit
                     _ => 0,
                 };
 
