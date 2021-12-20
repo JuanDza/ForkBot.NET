@@ -310,7 +310,7 @@ namespace SysBot.Pokemon
 
             int form = pkm.Species switch
             {
-                (int)Species.Sinistea or (int)Species.Polteageist => 0,
+                (int)Species.Sinistea or (int)Species.Polteageist or (int)Species.Rockruff => 0,
                 (int)Species.Alcremie when pkm.IsShiny || canGmax => 0,
                 _ => pkm.Form,
 

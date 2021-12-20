@@ -478,8 +478,13 @@ namespace SysBot.Pokemon
                 pk.SetSuggestedFormArgument((int)Species.Yamask);
 
             var la = new LegalityAnalysis(pk);
-            if (!la.Valid && result.EvoType == EvolutionType.LevelUpKnowMove || applyMoves)
-                EdgeCaseRelearnMoves(pk, la);
+            if (!la.Valid)
+            {
+                if (result.EvoType == EvolutionType.LevelUpKnowMove || applyMoves)
+                    EdgeCaseRelearnMoves(pk, la);
+                else if (pk.FatefulEncounter)
+                    pk.RelearnMoves = (int[])la.EncounterMatch.GetSuggestedRelearn(pk);
+            }
 
             la = new LegalityAnalysis(pk);
             if (!la.Valid)
@@ -544,9 +549,19 @@ namespace SysBot.Pokemon
                 (int)Species.Darumaka => pk.Form == 1 ? evoList.Find(x => x.EvolvedForm == 2 && x.Item == (TCItems)item) : evoList.Find(x => x.EvolvedForm == 0),
                 (int)Species.Rockruff when pk.Form == 1 => evoList.Find(x => x.EvolvedForm == 2), // Dusk
                 (int)Species.Rockruff => evoList.Find(x => x.DayTime == tod),
+                (int)Species.Wurmple => GetWurmpleEvo(pk, evoList),
                 _ => evoList.Find(x => x.BaseForm == pk.Form),
             };
             return result;
+        }
+
+        private EvolutionTemplate GetWurmpleEvo(PKM pkm, List<EvolutionTemplate> list)
+        {
+            var clone = pkm.Clone();
+            clone.Species = (int)Species.Silcoon;
+            if (WurmpleUtil.IsWurmpleEvoValid(clone))
+                return list.Find(x => x.EvolvesInto == (int)Species.Silcoon);
+            else return list.Find(x => x.EvolvesInto == (int)Species.Cascoon);
         }
 
         protected string ListNameSanitize(string name)
