@@ -2,18 +2,15 @@
 # Build and run tests for .NET Desktop or Windows classic desktop solutions.
 # Add steps that publish symbols, save build artifacts, and more:
 # https://docs.microsoft.com/azure/devops/pipelines/apps/windows/dot-net
-
 trigger:
-- KoiTest
-
-pr: none
+- master
 
 pool:
-  name: Azure Pipelines
-  vmImage: 'windows-latest'
+  name: Default
   demands:
   - msbuild
   - visualstudio
+
 
 variables:
   Solution: '**/*.sln'
